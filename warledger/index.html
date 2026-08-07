@@ -1,0 +1,1007 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>War Ledger — leaderboard screenshot to spreadsheet column</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@700;800&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+
+<!-- ══════════════════════════════════════════════════════════════════
+     THE CLAN ROSTER — this is the only bit you'll ever need to edit.
+
+     One name per line, between the backticks, in the row order your
+     spreadsheet uses. It's what you get on a fresh browser, what the
+     "Restore default list" button brings back, and what fills in if
+     you start a read with an empty box.
+
+     Day to day you don't have to touch this: whatever is in the box
+     is saved in your browser and comes back next time.
+     ══════════════════════════════════════════════════════════════════ -->
+<script>
+const DEFAULT_ROSTER = `
+zeeeev
+Hakudax01
+BigMIxx
+R1ceMano
+NeatSiren28025
+mfmfmf
+Lise22
+TheBlackC4t
+DreamEater
+NotANinja
+Hispleasure
+kryce
+ReconzZ
+Asthae
+popoye
+UnemploymedBoss
+Blocki
+GrizzlySuko
+Zwyrodnialec
+BabanizJK
+ShatnersLoveSoc
+Jakerz
+OpticFang34690
+Gio93
+LankyMouse32256
+nidpsoxto
+GiantHydra41903
+DomTheDestroyer
+Marius619
+HandsomeHusband
+Lyro
+GreenJade66284
+MajorPetal1606
+Thesilverarthur
+KovalO
+Baleine12345678
+Nutley123
+WeWillieWinkie
+Cochonne
+Clipper97
+StUwU
+A5hS
+R3L4X
+vestalas
+zhobro
+Maya2001
+Sebbutz
+Vanderlau
+SlyPhant12687
+ForgottenCreek
+Gripz
+`;
+
+// Change this if you ever want a second copy of the page to keep its
+// own separate roster (e.g. a different clan).
+const STORE_KEY = 'warledger.roster.v1';
+</script>
+<style>
+:root{
+  --ground:#12161C; --ground-2:#1B222C; --line:#2C3642;
+  --paper:#E9ECEF; --paper-hi:#FFFFFF; --paper-dim:#CFD6DD;
+  --ink:#0B0E12; --ink-soft:#4A5563;
+  --ally:#2F91E0; --enemy:#C1272D; --gold:#F5B915; --ok:#2E9E5B;
+  --r:14px;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  background:var(--ground);
+  color:var(--paper);
+  font-family:"IBM Plex Sans",system-ui,sans-serif;
+  font-size:15px; line-height:1.5;
+  -webkit-font-smoothing:antialiased;
+}
+.wrap{max-width:1040px;margin:0 auto;padding:0 20px 80px}
+
+/* ---------- header ---------- */
+header{position:relative;margin-bottom:34px}
+.banner{
+  height:10px;margin:0 -20px 26px;
+  background:linear-gradient(90deg,var(--ally) 0%,var(--ally) 48%,var(--enemy) 52%,var(--enemy) 100%);
+}
+h1{
+  font-family:"Baloo 2",system-ui,sans-serif;font-weight:800;
+  font-size:clamp(30px,5.4vw,46px);line-height:1.02;letter-spacing:-.02em;
+  margin:0 0 8px;color:var(--paper-hi);
+}
+h1 .dim{color:var(--ally)}
+.sub{color:#9AA7B5;max-width:60ch;margin:0}
+.sub code{font-family:"IBM Plex Mono",monospace;font-size:.9em;color:var(--paper-dim)}
+
+/* ---------- steps ---------- */
+section{margin-top:34px}
+.step-head{display:flex;align-items:baseline;gap:12px;margin-bottom:12px}
+.step-num{
+  font-family:"IBM Plex Mono",monospace;font-size:12px;font-weight:500;
+  color:var(--ally);border:1px solid var(--line);border-radius:99px;
+  padding:2px 9px;flex:none;letter-spacing:.06em;
+}
+.step-title{font-family:"Baloo 2",sans-serif;font-weight:700;font-size:22px;color:var(--paper-hi);margin:0}
+.step-note{color:#8C99A8;font-size:13.5px;margin:0 0 14px}
+
+/* ---------- controls ---------- */
+textarea,input[type=text],select{
+  font-family:"IBM Plex Mono",monospace;font-size:13.5px;
+  background:var(--ground-2);color:var(--paper);
+  border:1px solid var(--line);border-radius:10px;padding:10px 12px;width:100%;
+}
+textarea{resize:vertical;min-height:150px;line-height:1.45}
+textarea:focus,input:focus,select:focus,button:focus-visible{
+  outline:2px solid var(--ally);outline-offset:2px;
+}
+button{
+  font-family:"IBM Plex Sans",sans-serif;font-weight:600;font-size:14px;
+  background:var(--paper);color:var(--ink);border:none;border-radius:10px;
+  padding:10px 18px;cursor:pointer;
+}
+button:hover{background:var(--paper-hi)}
+button.primary{background:var(--ally);color:#06131E}
+button.primary:hover{filter:brightness(1.12)}
+button.ghost{background:transparent;color:var(--paper-dim);border:1px solid var(--line)}
+button.ghost:hover{background:var(--ground-2);color:var(--paper-hi)}
+button:disabled{opacity:.4;cursor:not-allowed}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:10px}
+.tag{font-family:"IBM Plex Mono",monospace;font-size:12px;color:#8C99A8}
+
+/* ---------- dropzone ---------- */
+#drop{
+  border:2px dashed var(--line);border-radius:var(--r);
+  padding:30px 20px;text-align:center;color:#8C99A8;cursor:pointer;
+  transition:border-color .15s,background .15s;
+}
+#drop:hover,#drop.hot{border-color:var(--ally);background:rgba(47,145,224,.07);color:var(--paper)}
+#drop b{color:var(--paper-hi);font-weight:600}
+#thumbs{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
+.thumb{position:relative;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--ground-2)}
+.thumb img{display:block;height:88px;width:auto}
+.thumb button{
+  position:absolute;top:3px;right:3px;padding:0;width:20px;height:20px;line-height:18px;
+  border-radius:6px;background:rgba(11,14,18,.8);color:#fff;font-size:13px;
+}
+
+/* ---------- progress ---------- */
+#prog{margin-top:14px;display:none}
+#prog.on{display:block}
+.bar{height:6px;background:var(--ground-2);border-radius:99px;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--ally);width:0%;transition:width .2s}
+#progtxt{font-family:"IBM Plex Mono",monospace;font-size:12px;color:#8C99A8;margin-top:6px}
+
+/* ---------- review: the proof strips ---------- */
+.shot-group{margin-top:20px}
+.shot-name{
+  font-family:"IBM Plex Mono",monospace;font-size:12px;color:#8C99A8;
+  border-bottom:1px solid var(--line);padding-bottom:6px;margin-bottom:12px;
+  display:flex;justify-content:space-between;gap:10px;
+}
+.entry{
+  display:grid;grid-template-columns:minmax(180px,300px) 118px 1fr auto;
+  gap:12px;align-items:center;
+  background:var(--paper);color:var(--ink);
+  border-radius:var(--r);padding:10px 12px;margin-bottom:10px;
+  box-shadow:0 2px 0 rgba(0,0,0,.5);
+}
+.entry.flag{box-shadow:0 2px 0 rgba(0,0,0,.5),0 0 0 2px var(--gold)}
+.entry.bad{box-shadow:0 2px 0 rgba(0,0,0,.5),0 0 0 2px var(--enemy)}
+.entry.off{opacity:.45}
+.proof{border-radius:8px;overflow:hidden;background:var(--paper-dim);border:1px solid rgba(11,14,18,.18)}
+.proof img{display:block;width:100%;height:auto}
+.entry input.val{
+  font-family:"Baloo 2",sans-serif;font-weight:800;font-size:19px;letter-spacing:-.01em;
+  background:var(--paper-hi);color:var(--ink);border:1px solid rgba(11,14,18,.2);
+  border-radius:8px;padding:5px 8px;text-align:right;
+}
+.entry select{
+  font-family:"IBM Plex Sans",sans-serif;font-size:14px;font-weight:500;
+  background:var(--paper-hi);color:var(--ink);border:1px solid rgba(11,14,18,.2);
+}
+.meta{font-family:"IBM Plex Mono",monospace;font-size:11px;color:var(--ink-soft);white-space:nowrap}
+.meta .warnpill{color:#8A5A00;background:rgba(245,185,21,.28);padding:1px 6px;border-radius:5px}
+.meta .badpill{color:#7E1519;background:rgba(193,39,45,.2);padding:1px 6px;border-radius:5px}
+.readname{font-family:"IBM Plex Mono",monospace;font-size:11px;color:var(--ink-soft);margin-top:3px}
+.cell{min-width:0}
+
+/* ---------- output ---------- */
+.outgrid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.outbox h3{font-family:"Baloo 2",sans-serif;font-weight:700;font-size:16px;margin:0 0 4px;color:var(--paper-hi)}
+.outbox p{font-size:12.5px;color:#8C99A8;margin:0 0 8px}
+.outbox textarea{min-height:240px}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.chip{
+  font-family:"IBM Plex Mono",monospace;font-size:11.5px;
+  background:var(--ground-2);border:1px solid var(--line);color:#9AA7B5;
+  padding:3px 8px;border-radius:99px;
+}
+.stat{font-family:"IBM Plex Mono",monospace;font-size:12.5px;color:#9AA7B5;margin-top:10px}
+.stat b{color:var(--paper-hi)}
+
+/* ---------- misc ---------- */
+details.adv{margin-top:22px;border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+details.adv summary{cursor:pointer;font-size:13.5px;color:#9AA7B5;font-weight:600}
+details.adv .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px;margin-top:14px}
+details.adv label{display:block;font-size:12.5px;color:#8C99A8;margin-bottom:4px}
+.empty{color:#7C8896;font-size:14px;padding:18px 0}
+.err{background:rgba(193,39,45,.12);border:1px solid var(--enemy);color:#F0B7B9;
+     padding:10px 12px;border-radius:10px;font-size:13.5px;margin-bottom:10px}
+.toast{
+  position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(20px);
+  background:var(--ok);color:#04140A;font-weight:600;font-size:14px;
+  padding:9px 18px;border-radius:99px;opacity:0;pointer-events:none;transition:all .2s;
+}
+.toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
+@media (max-width:760px){
+  .outgrid{grid-template-columns:1fr}
+  .entry{grid-template-columns:1fr;gap:8px}
+  .entry input.val{text-align:left}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="banner"></div>
+  <h1>War Ledger<span class="dim">.</span></h1>
+  <p class="sub">Reads the daily points ranking out of clan-war screenshots, lines the numbers up with your roster, and hands you back one column you can paste straight into <code>Data Entry</code>. Everything runs in your browser — no upload, no key, no server.</p>
+</header>
+
+<!-- STEP 1 -->
+<section>
+  <div class="step-head"><span class="step-num">STEP 1</span><h2 class="step-title">Paste the roster</h2></div>
+  <p class="step-note">Copy column A from the spreadsheet, in the exact row order you want back. Blank lines are kept, so the column you get out lines up row for row. Edits stay in this browser, so next time it's already here.</p>
+  <textarea id="roster" spellcheck="false" placeholder="zeeeev&#10;Hakudax01&#10;BigMIxx&#10;R1ceMano&#10;…"></textarea>
+  <div class="row">
+    <span class="tag" id="rostercount">0 names</span>
+    <span class="tag" id="savedtag"></span>
+    <button class="ghost" id="restore" style="margin-left:auto">Restore default list</button>
+  </div>
+</section>
+
+<!-- STEP 2 -->
+<section>
+  <div class="step-head"><span class="step-num">STEP 2</span><h2 class="step-title">Add the screenshots</h2></div>
+  <p class="step-note">Full-screen shots of the ranking popup. Overlap between shots is fine — duplicates get merged. You can also just paste with Ctrl+V.</p>
+  <div id="drop" tabindex="0" role="button" aria-label="Add screenshots">
+    <b>Drop screenshots here</b><br>or click to pick files · Ctrl+V to paste
+  </div>
+  <input type="file" id="file" accept="image/*" multiple hidden>
+  <div id="thumbs"></div>
+  <div class="row">
+    <button class="primary" id="run" disabled>Read screenshots</button>
+    <button class="ghost" id="clearshots">Remove all</button>
+  </div>
+  <div id="prog"><div class="bar"><i id="barfill"></i></div><div id="progtxt"></div></div>
+</section>
+
+<!-- STEP 3 -->
+<section>
+  <div class="step-head"><span class="step-num">STEP 3</span><h2 class="step-title">Check the reads</h2></div>
+  <p class="step-note">Each line shows the pixels it came from. Skim the strips against the numbers — a gold outline means the value looked odd, red means no roster match. Fix anything wrong right here.</p>
+  <div id="review"><div class="empty">Nothing read yet.</div></div>
+</section>
+
+<!-- STEP 4 -->
+<section>
+  <div class="step-head"><span class="step-num">STEP 4</span><h2 class="step-title">Copy it back</h2></div>
+  <div class="outgrid">
+    <div class="outbox">
+      <h3>Points column</h3>
+      <p>One line per roster line, same order. Paste into the day's column.</p>
+      <textarea id="outcol" spellcheck="false" readonly></textarea>
+      <div class="row"><button class="primary" id="copycol">Copy column</button></div>
+    </div>
+    <div class="outbox">
+      <h3>Name,points</h3>
+      <p>CSV with names attached, for a sanity check or a separate sheet.</p>
+      <textarea id="outcsv" spellcheck="false" readonly></textarea>
+      <div class="row">
+        <button id="copycsv">Copy CSV</button>
+        <button class="ghost" id="dlcsv">Download .csv</button>
+      </div>
+    </div>
+  </div>
+  <div class="stat" id="stat"></div>
+  <div class="chips" id="missing"></div>
+</section>
+
+<details class="adv">
+  <summary>Tuning — only touch this if reads come back empty or wrong</summary>
+  <div class="grid">
+    <div>
+      <label for="thr">Glyph brightness cut-off — <span id="thrv">246</span></label>
+      <input type="range" id="thr" min="200" max="254" value="246" style="width:100%">
+      <p class="step-note" style="margin:6px 0 0">The text is white with a black outline. This picks up the white fill. Lower it if letters come out broken.</p>
+    </div>
+    <div>
+      <label for="namex">Name column starts at — <span id="namexv">35</span>% of the card</label>
+      <input type="range" id="namex" min="10" max="60" value="35" style="width:100%">
+      <p class="step-note" style="margin:6px 0 0">Everything left of this (rank number, avatar) is ignored.</p>
+    </div>
+    <div>
+      <label for="scale">Upscale before reading — <span id="scalev">3</span>×</label>
+      <input type="range" id="scale" min="2" max="5" value="3" style="width:100%">
+      <p class="step-note" style="margin:6px 0 0">Higher is slower, occasionally more accurate.</p>
+    </div>
+    <div>
+      <label for="minscore">Name match strictness — <span id="minscorev">0.55</span></label>
+      <input type="range" id="minscore" min="30" max="90" value="55" style="width:100%">
+      <p class="step-note" style="margin:6px 0 0">Below this, a read is left unassigned instead of guessed.</p>
+    </div>
+  </div>
+  <div class="row"><label style="display:flex;gap:8px;align-items:center;color:#9AA7B5;font-size:13px">
+    <input type="checkbox" id="debug" style="width:auto"> Show what the reader actually saw (debug strips)
+  </label></div>
+</details>
+
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+/* ============================================================
+   State
+   ============================================================ */
+const S = {
+  roster: [],   // {raw, norm, folded, tail}
+  shots: [],    // {id, label, canvas, url}
+  entries: [],  // {id, shotId, proof, ocrName, value, warns, assign, score, debug[]}
+  nextId: 1
+};
+const $ = s => document.querySelector(s);
+const opts = () => ({
+  thr: +$('#thr').value,
+  namex: +$('#namex').value / 100,
+  scale: +$('#scale').value,
+  minscore: +$('#minscore').value / 100,
+  debug: $('#debug').checked
+});
+
+/* ============================================================
+   Roster
+   ============================================================ */
+function normName(s){ return String(s).toLowerCase().replace(/[^a-z0-9]/g,''); }
+// Fold characters that this game's rounded font confuses constantly.
+function foldName(s){
+  return normName(s)
+    .replace(/[il]/g,'1').replace(/o/g,'0')
+    .replace(/s/g,'5').replace(/z/g,'2')
+    .replace(/b/g,'8').replace(/g/g,'9');
+}
+function tailDigits(s){ const m = String(s).match(/(\d{3,})\s*$/); return m ? m[1] : ''; }
+
+/* Kept in the browser, not on any server — GitHub Pages has nowhere to put it.
+   Private windows and locked-down browsers refuse, so every call can fail. */
+let storageOK = true;
+function loadRoster(){
+  try { return localStorage.getItem(STORE_KEY); }
+  catch(e){ storageOK = false; return null; }
+}
+function saveRoster(text){
+  try { localStorage.setItem(STORE_KEY, text); storageOK = true; }
+  catch(e){ storageOK = false; }
+  showSaved();
+}
+function showSaved(){
+  $('#savedtag').textContent = storageOK
+    ? 'saved in this browser'
+    : "this browser won't keep it — edit the list in the file instead";
+  $('#savedtag').style.color = storageOK ? '#5E6C7C' : '#C98A2E';
+}
+/* Whatever is in the box wins; an empty box falls back to the built-in list. */
+function rosterText(){
+  const v = $('#roster').value;
+  return v.trim() ? v : DEFAULT_ROSTER.trim();
+}
+function fillIfEmpty(){
+  if($('#roster').value.trim()) return false;
+  $('#roster').value = DEFAULT_ROSTER.trim();
+  readRoster(); saveRoster($('#roster').value);
+  return true;
+}
+
+function readRoster(){
+  const lines = rosterText().replace(/\r/g,'').split('\n');
+  // drop trailing empties only, keep interior blanks so rows stay aligned
+  while(lines.length && lines[lines.length-1].trim()==='') lines.pop();
+  S.roster = lines.map(raw => {
+    const t = raw.trim();
+    return { raw:t, norm:normName(t), folded:foldName(t), tail:tailDigits(t) };
+  });
+  const n = S.roster.filter(r=>r.raw).length;
+  $('#rostercount').textContent = n + (n===1?' name':' names');
+  render();
+}
+
+/* ============================================================
+   Image geometry — find the cards, then the rows, then the lines
+   ============================================================ */
+function lumaAt(d,i){ return 0.299*d[i] + 0.587*d[i+1] + 0.114*d[i+2]; }
+
+/* Card background is a flat light gray. Find how far it reaches across. */
+function findCardBounds(img){
+  const {data:d, width:w, height:h} = img;
+  const col = new Float32Array(w);
+  const step = Math.max(1, Math.round(h/500));
+  let max = 0;
+  for(let x=0;x<w;x++){
+    let hit=0, n=0;
+    for(let y=0;y<h;y+=step){
+      const i=(y*w+x)*4, r=d[i], g=d[i+1], b=d[i+2];
+      const L = 0.299*r+0.587*g+0.114*b;
+      const sat = Math.max(r,g,b)-Math.min(r,g,b);
+      if(L>=210 && L<=246 && sat<14) hit++;
+      n++;
+    }
+    col[x]=hit/n;
+    if(col[x]>max) max=col[x];
+  }
+  if(max < 0.05) return null;
+  const cut = 0.25*max;
+  let x0=-1, x1=-1;
+  for(let x=0;x<w;x++) if(col[x]>cut){ x0=x; break; }
+  for(let x=w-1;x>=0;x--) if(col[x]>cut){ x1=x; break; }
+  if(x0<0 || x1-x0 < w*0.25) return null;
+  return {x0, x1};
+}
+
+/* Median luma per scanline inside the cards separates rows from the white gaps. */
+function findRowBands(img, card){
+  const {data:d, width:w, height:h} = img;
+  const W = card.x1 - card.x0;
+  const bx0 = Math.round(card.x0 + 0.20*W), bx1 = Math.round(card.x0 + 0.80*W);
+  const samples = 61;
+  const buf = new Float64Array(samples);
+  const inside = new Uint8Array(h);
+  const blueish = new Uint8Array(h);
+  for(let y=0;y<h;y++){
+    let rs=0, bs=0;
+    for(let k=0;k<samples;k++){
+      const x = Math.round(bx0 + (bx1-bx0)*k/(samples-1));
+      const i = (y*w+x)*4;
+      buf[k] = lumaAt(d,i); rs += d[i]; bs += d[i+2];
+    }
+    const s = Array.from(buf).sort((a,b)=>a-b);
+    const med = s[(samples-1)>>1];
+    inside[y] = med < 248 ? 1 : 0;
+    blueish[y] = (bs - rs) / samples > 30 ? 1 : 0;
+    if(med < 200 && !blueish[y]) inside[y] = 0;   // dark chrome is not a card
+  }
+  // JPEG noise can knock out a scanline; close gaps of a few pixels
+  for(let y=1;y<h-1;y++){
+    if(inside[y]) continue;
+    let e=y; while(e<h && !inside[e]) e++;
+    if(e<h && e-y<=4) for(let k=y;k<e;k++) inside[k]=1;
+    y=e;
+  }
+  let runs=[]; let st=null;
+  for(let y=0;y<h;y++){
+    if(inside[y] && st===null) st=y;
+    else if(!inside[y] && st!==null){ runs.push([st,y]); st=null; }
+  }
+  if(st!==null) runs.push([st,h]);
+  const minH = Math.max(18, h*0.012), maxH = h*0.12;
+  runs = runs.filter(r => (r[1]-r[0])>=minH && (r[1]-r[0])<=maxH);
+  if(!runs.length) return [];
+
+  // Cards are all the same height. Find that height, then stitch back any
+  // card that got split by a stray bright line inside it.
+  const tally = new Map();
+  runs.forEach(r => { const k = Math.round((r[1]-r[0])/5)*5; tally.set(k,(tally.get(k)||0)+1); });
+  let H = 0, best = -1;
+  for(const [k,c] of tally) if(c>best || (c===best && k>H)){ best=c; H=k; }
+  if(H > 0){
+    const merged = [runs[0].slice()];
+    for(let i=1;i<runs.length;i++){
+      const prev = merged[merged.length-1], cur = runs[i];
+      const gap = cur[0]-prev[1], span = cur[1]-prev[0];
+      if(gap < 0.25*H && span <= 1.15*H) prev[1] = cur[1];
+      else merged.push(cur.slice());
+    }
+    runs = merged;
+  }
+  return runs.map(r=>({y0:r[0], y1:r[1]}));
+}
+
+/* Inside one card: white glyph fill -> horizontal bands of text. */
+function findTextLines(img, x0, x1, y0, y1, thr){
+  const {data:d, width:w} = img;
+  const bw = x1-x0, bh = y1-y0;
+  if(bw<20 || bh<12) return [];
+  const mask = new Uint8Array(bw*bh);
+  const proj = new Int32Array(bh);
+  for(let y=0;y<bh;y++){
+    let c=0;
+    for(let x=0;x<bw;x++){
+      const i = ((y0+y)*w + (x0+x))*4;
+      if(lumaAt(d,i) >= thr){ mask[y*bw+x]=1; c++; }
+    }
+    proj[y]=c;
+  }
+  const runs=[]; let st=null;
+  for(let y=0;y<bh;y++){
+    if(proj[y]>3 && st===null) st=y;
+    else if(proj[y]<=3 && st!==null){ runs.push([st,y]); st=null; }
+  }
+  if(st!==null) runs.push([st,bh]);
+  const minLineH = Math.max(9, bh*0.10);
+  const out=[];
+  for(const [a,b] of runs){
+    if(b-a < minLineH) continue;
+    // tighten horizontally
+    let lx=bw, rx=-1;
+    for(let y=a;y<b;y++) for(let x=0;x<bw;x++) if(mask[y*bw+x]){ if(x<lx) lx=x; if(x>rx) rx=x; }
+    if(rx-lx < 12) continue;
+    let ink=0;
+    for(let y=a;y<b;y++) for(let x=lx;x<=rx;x++) ink+=mask[y*bw+x];
+    if(ink < 40) continue;
+    out.push({mask, bw, top:a, bot:b, left:lx, right:rx, ink});
+  }
+  return out;
+}
+
+/* Render a text band as clean black-on-white, upscaled, with a margin. */
+function lineCanvas(L, scale){
+  const w = L.right - L.left + 1, h = L.bot - L.top;
+  const base = document.createElement('canvas');
+  base.width = w; base.height = h;
+  const bctx = base.getContext('2d');
+  const id = bctx.createImageData(w,h);
+  for(let y=0;y<h;y++) for(let x=0;x<w;x++){
+    const on = L.mask[(L.top+y)*L.bw + (L.left+x)];
+    const v = on ? 0 : 255, o = (y*w+x)*4;
+    id.data[o]=v; id.data[o+1]=v; id.data[o+2]=v; id.data[o+3]=255;
+  }
+  bctx.putImageData(id,0,0);
+  const pad = Math.round(8*scale);
+  const out = document.createElement('canvas');
+  out.width = w*scale + pad*2; out.height = h*scale + pad*2;
+  const octx = out.getContext('2d');
+  octx.fillStyle='#fff'; octx.fillRect(0,0,out.width,out.height);
+  octx.imageSmoothingEnabled = true; octx.imageSmoothingQuality='high';
+  octx.drawImage(base, 0,0,w,h, pad,pad, w*scale, h*scale);
+  return out;
+}
+
+/* ============================================================
+   Text -> value
+   ============================================================ */
+const SEP = /[.,;:'’`´\u00B7\u2019]/;
+function classify(txt){
+  const alnum = (txt.match(/[a-zA-Z0-9]/g)||[]).length;
+  const digits = (txt.match(/\d/g)||[]).length;
+  return { alnum, digits, numeric: alnum>=3 && digits/alnum >= 0.75 };
+}
+/* Two independent reads of the same pixels: a free read, and one restricted to
+   digits. They fail in different ways, so disagreement is the alarm. */
+function parseValue(plain, strict){
+  const dp = plain.replace(/\D/g,'');
+  const ds = (strict||'').replace(/\D/g,'');
+  const digits = ds || dp;
+  const warns = [];
+  if(!digits) return {value:null, warns:['no digits']};
+  if(ds && dp && ds !== dp) warns.push(`reads differ (${dp} vs ${ds}) — confirm against the strip`);
+  else if(/[A-Za-z]/.test(plain)) warns.push('a letter turned up in the number');
+  if(digits.length > 3 && !SEP.test(plain) && !SEP.test(strict||'')) warns.push('no thousands mark — check it');
+  if(digits.length < 3 || digits.length > 8) warns.push('unusual length');
+  const groups = plain.replace(/[^0-9.,;:'’`´\u00B7]/g,'').split(SEP).filter(Boolean);
+  if(groups.length > 1 && groups.slice(1).some(g => g.replace(/\D/g,'').length !== 3))
+    warns.push('odd digit grouping');
+  return {value: parseInt(digits,10), warns};
+}
+function cleanNameText(txt){
+  return txt.replace(/\bMVP\b/gi,'')
+            .replace(/^[^A-Za-z0-9]+/,'')
+            .replace(/[^A-Za-z0-9_\- ]+$/,'')
+            .replace(/\s+/g,' ')
+            .trim();
+}
+
+/* ============================================================
+   Fuzzy matching
+   ============================================================ */
+function lev(a,b){
+  if(a===b) return 0;
+  const m=a.length, n=b.length;
+  if(!m) return n; if(!n) return m;
+  let prev = new Array(n+1), cur = new Array(n+1);
+  for(let j=0;j<=n;j++) prev[j]=j;
+  for(let i=1;i<=m;i++){
+    cur[0]=i;
+    for(let j=1;j<=n;j++){
+      cur[j] = Math.min(prev[j]+1, cur[j-1]+1, prev[j-1] + (a[i-1]===b[j-1]?0:1));
+    }
+    [prev,cur]=[cur,prev];
+  }
+  return prev[n];
+}
+function sim(a,b){ const L=Math.max(a.length,b.length); return L? 1 - lev(a,b)/L : 0; }
+
+function scoreOne(ocr, r){
+  const a = normName(ocr), b = r.norm;
+  if(!a || !b) return 0;
+  if(a === b) return 1;
+  let s = Math.max(sim(a,b), sim(foldName(ocr), r.folded));
+  const t = tailDigits(ocr);
+  if(t && r.tail && t === r.tail) s = Math.min(1, s + 0.28);
+  if(a.length>=4 && b.length>=4 && (a.startsWith(b.slice(0,4)) || b.startsWith(a.slice(0,4)))) s += 0.04;
+  return Math.min(1, s);
+}
+function scorePair(ocr, r){
+  if(!r.raw || !ocr) return 0;
+  // OCR sometimes tacks a stray token onto a name, or splits one in half
+  const parts = ocr.split(/\s+/).filter(Boolean);
+  const variants = new Set([ocr, parts.join('')]);
+  if(parts.length > 1) variants.add(parts[0]);
+  let best = 0;
+  for(const v of variants) best = Math.max(best, scoreOne(v, r));
+  return best;
+}
+
+function assignAll(){
+  const min = opts().minscore;
+  const live = S.entries.filter(e => e.assign !== 'ignore' && !e.manual);
+  live.forEach(e => { e.assign = null; e.score = 0; });
+  const pairs = [];
+  live.forEach((e, ei) => {
+    S.roster.forEach((r, ri) => {
+      if(!r.raw) return;
+      const s = scorePair(e.ocrName, r);
+      if(s >= min) pairs.push({ei, ri, s});
+    });
+  });
+  pairs.sort((a,b)=>b.s-a.s);
+  const takenRow = new Set();
+  // rows locked by manual choices are off the table
+  S.entries.forEach(e => { if(e.manual && typeof e.assign === 'number') takenRow.add(e.assign); });
+  const usedEntry = new Set();
+  for(const p of pairs){
+    if(usedEntry.has(p.ei) || takenRow.has(p.ri)) continue;
+    live[p.ei].assign = p.ri; live[p.ei].score = p.s;
+    usedEntry.add(p.ei); takenRow.add(p.ri);
+  }
+}
+
+/* ============================================================
+   OCR run
+   ============================================================ */
+let worker = null;
+async function getWorker(){
+  if(worker) return worker;
+  setProg(0, 'Loading the reader (one-off ~5 MB download)…');
+  worker = await Tesseract.createWorker('eng', 1, {
+    logger: m => { if(m.status==='loading language traineddata') setProg(m.progress*10, 'Loading language data…'); }
+  });
+  await worker.setParameters({ tessedit_pageseg_mode: '7' });
+  return worker;
+}
+
+function setProg(pct, txt){
+  $('#prog').classList.add('on');
+  $('#barfill').style.width = Math.max(0,Math.min(100,pct)) + '%';
+  $('#progtxt').textContent = txt;
+}
+
+async function runOCR(){
+  if(!S.shots.length) return;
+  const o = opts();
+  $('#run').disabled = true;
+  S.entries = [];
+  const w = await getWorker();
+  let total = 0, done = 0;
+  const plan = [];
+
+  for(const shot of S.shots){
+    const ctx = shot.canvas.getContext('2d', {willReadFrequently:true});
+    const img = ctx.getImageData(0,0,shot.canvas.width,shot.canvas.height);
+    const card = findCardBounds(img);
+    if(!card){ plan.push({shot, error:'Could not find the ranking cards in this shot.'}); continue; }
+    const bands = findRowBands(img, card);
+    const W = card.x1 - card.x0;
+    const nx0 = Math.round(card.x0 + o.namex*W);
+    const rows = [];
+    for(const b of bands){
+      const lines = findTextLines(img, nx0, card.x1, b.y0, b.y1, o.thr);
+      if(!lines.length) continue;
+      rows.push({band:b, lines, card});
+      total += lines.length;
+    }
+    if(!rows.length) plan.push({shot, error:'Found no readable rows. Try lowering the brightness cut-off in Tuning.'});
+    else plan.push({shot, rows, card, img});
+  }
+
+  // --- free read of every text line ---
+  await w.setParameters({ tessedit_char_whitelist: '' });
+  const cand = [];
+  for(const p of plan){
+    if(p.error){ S.entries.push({id:S.nextId++, shotId:p.shot.id, error:p.error}); continue; }
+    for(const row of p.rows){
+      const reads = [];
+      for(const L of row.lines){
+        const cv = lineCanvas(L, o.scale);
+        const res = await w.recognize(cv);
+        reads.push({txt:(res.data.text||'').replace(/\s+/g,' ').trim(), canvas:cv});
+        done++; setProg(10 + 70*done/Math.max(1,total), `Reading ${done} of ${total} lines — ${p.shot.label}`);
+      }
+      let nameRead = null, numRead = null;
+      for(const r of reads){
+        if(classify(r.txt).numeric) numRead = r;
+        else if(!nameRead && (r.txt.match(/[A-Za-z]/g)||[]).length >= 2) nameRead = r;
+      }
+      if(!numRead) continue;                       // no number -> not a leaderboard row
+      cand.push({p, row, reads, nameRead, numRead});
+    }
+  }
+
+  // --- second, digits-only read of just the number lines, as a cross-check ---
+  await w.setParameters({ tessedit_char_whitelist: '0123456789,.' });
+  let n2 = 0;
+  for(const c of cand){
+    const res = await w.recognize(c.numRead.canvas);
+    c.strict = (res.data.text||'').replace(/\s+/g,' ').trim();
+    n2++; setProg(80 + 18*n2/Math.max(1,cand.length), `Double-checking ${n2} of ${cand.length} numbers`);
+  }
+  await w.setParameters({ tessedit_char_whitelist: '' });
+
+  for(const c of cand){
+    const parsed = parseValue(c.numRead.txt, c.strict);
+    if(parsed.value === null) continue;
+    const ocrName = c.nameRead ? cleanNameText(c.nameRead.txt) : '';
+    if(!ocrName) parsed.warns.push('name unreadable — row was probably cut off');
+    S.entries.push({
+      id: S.nextId++, shotId: c.p.shot.id,
+      proof: proofStrip(c.p.shot.canvas, c.row.card, c.row.band),
+      ocrName, value: parsed.value, warns: parsed.warns,
+      assign: null, score: 0, manual: false,
+      debug: o.debug ? c.reads.map(r=>({url:r.canvas.toDataURL(), txt:r.txt})) : null
+    });
+  }
+
+  dedupe();
+  assignAll();
+  setProg(100, `Done — ${S.entries.filter(e=>!e.error).length} rows read.`);
+  setTimeout(()=>$('#prog').classList.remove('on'), 2200);
+  $('#run').disabled = false;
+  render();
+}
+
+/* Same player read twice across overlapping shots: keep the better read. */
+function dedupe(){
+  const seen = new Map();
+  const keep = [];
+  for(const e of S.entries){
+    if(e.error){ keep.push(e); continue; }
+    const k = normName(e.ocrName);
+    if(!k){ keep.push(e); continue; }
+    if(seen.has(k)){
+      const prev = seen.get(k);
+      if(e.value !== prev.value) prev.warns = [...new Set([...prev.warns, 'two shots disagree: ' + prev.value + ' vs ' + e.value])];
+      if((e.warns.length < prev.warns.length)) prev.value = e.value;
+      continue;
+    }
+    seen.set(k, e); keep.push(e);
+  }
+  S.entries = keep;
+}
+
+function proofStrip(canvas, card, band){
+  const sw = card.x1-card.x0, sh = band.y1-band.y0;
+  const outW = 300, outH = Math.round(sh * outW/sw);
+  const c = document.createElement('canvas');
+  c.width = outW; c.height = outH;
+  const ctx = c.getContext('2d');
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(canvas, card.x0, band.y0, sw, sh, 0, 0, outW, outH);
+  return c.toDataURL('image/jpeg', 0.75);
+}
+
+/* ============================================================
+   Render
+   ============================================================ */
+function render(){
+  renderReview();
+  renderOutput();
+}
+
+function renderReview(){
+  const host = $('#review');
+  if(!S.entries.length){ host.innerHTML = '<div class="empty">Nothing read yet.</div>'; return; }
+  const byShot = new Map();
+  for(const e of S.entries){
+    if(!byShot.has(e.shotId)) byShot.set(e.shotId, []);
+    byShot.get(e.shotId).push(e);
+  }
+  const parts = [];
+  for(const shot of S.shots){
+    const list = byShot.get(shot.id);
+    if(!list) continue;
+    const good = list.filter(e=>!e.error).length;
+    parts.push(`<div class="shot-group"><div class="shot-name"><span>${esc(shot.label)}</span><span>${good} row${good===1?'':'s'}</span></div>`);
+    for(const e of list){
+      if(e.error){ parts.push(`<div class="err">${esc(e.error)}</div>`); continue; }
+      const matched = typeof e.assign === 'number';
+      const cls = e.assign==='ignore' ? 'entry off'
+                : !matched ? 'entry bad'
+                : e.warns.length ? 'entry flag' : 'entry';
+      const optsHtml = ['<option value="">— not assigned —</option>','<option value="ignore">— ignore this row —</option>']
+        .concat(S.roster.map((r,i)=> r.raw
+          ? `<option value="${i}" ${e.assign===i?'selected':''}>${esc(r.raw)}</option>` : ''))
+        .join('');
+      const meta = [];
+      if(matched && e.score < 1) meta.push(`<span class="meta">match ${(e.score*100|0)}%</span>`);
+      e.warns.forEach(w => meta.push(`<span class="warnpill">${esc(w)}</span>`));
+      if(!matched && e.assign!=='ignore') meta.push('<span class="badpill">no match</span>');
+      parts.push(`<div class="${cls}" data-id="${e.id}">
+        <div class="proof"><img src="${e.proof}" alt="row from screenshot"></div>
+        <div class="cell"><input class="val" type="text" inputmode="numeric" value="${e.value ?? ''}"></div>
+        <div class="cell"><select class="asg">${optsHtml}</select>
+          <div class="readname">read as “${esc(e.ocrName||'—')}”</div></div>
+        <div class="meta">${meta.join(' ')}</div>
+        ${e.debug ? `<div style="grid-column:1/-1;display:flex;gap:8px;flex-wrap:wrap;border-top:1px dashed rgba(11,14,18,.2);padding-top:8px">
+           ${e.debug.map(d=>`<figure style="margin:0"><img src="${d.url}" style="max-height:34px;border:1px solid #ccc"><figcaption class="meta">${esc(d.txt)}</figcaption></figure>`).join('')}
+        </div>` : ''}
+      </div>`);
+    }
+    parts.push('</div>');
+  }
+  host.innerHTML = parts.join('');
+
+  host.querySelectorAll('.entry').forEach(el => {
+    const id = +el.dataset.id;
+    const e = S.entries.find(x=>x.id===id);
+    el.querySelector('.val').addEventListener('input', ev => {
+      const v = ev.target.value.replace(/\D/g,'');
+      e.value = v ? parseInt(v,10) : null;
+      renderOutput();
+    });
+    el.querySelector('.asg').addEventListener('change', ev => {
+      const v = ev.target.value;
+      e.manual = true;
+      e.assign = v === '' ? null : (v === 'ignore' ? 'ignore' : +v);
+      e.score = v === '' || v === 'ignore' ? 0 : 1;
+      render();
+    });
+  });
+}
+
+function renderOutput(){
+  const col = S.roster.map(() => '');
+  const used = new Set();
+  for(const e of S.entries){
+    if(e.error || typeof e.assign !== 'number' || e.value == null) continue;
+    col[e.assign] = String(e.value);
+    used.add(e.assign);
+  }
+  $('#outcol').value = col.join('\n');
+  $('#outcsv').value = S.roster
+      .map((r,i)=> r.raw ? `${csvq(r.raw)},${col[i]}` : '')
+      .join('\n');
+
+  const named = S.roster.filter(r=>r.raw).length;
+  const read = S.entries.filter(e=>!e.error && e.value!=null && e.assign!=='ignore').length;
+  const un = S.entries.filter(e=>!e.error && e.assign===null).length;
+  $('#stat').innerHTML = named
+    ? `<b>${used.size}</b> of <b>${named}</b> roster names filled · ${read} rows read · ${un} unassigned · output is <b>${col.length}</b> lines`
+    : '';
+  const miss = S.roster.map((r,i)=>(r.raw && !used.has(i)) ? r.raw : null).filter(Boolean);
+  $('#missing').innerHTML = miss.length
+    ? '<span class="chip" style="border-color:#3D4A59;color:#C7D0D9">no points yet:</span>' + miss.map(m=>`<span class="chip">${esc(m)}</span>`).join('')
+    : '';
+}
+
+function csvq(s){ return /[",\n]/.test(s) ? '"'+s.replace(/"/g,'""')+'"' : s; }
+function esc(s){ return String(s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+/* ============================================================
+   Files
+   ============================================================ */
+function addFiles(files){
+  const list = [...files].filter(f => f.type.startsWith('image/'));
+  let pending = list.length;
+  if(!pending) return;
+  list.forEach(f => {
+    const url = URL.createObjectURL(f);
+    const im = new Image();
+    im.onload = () => {
+      const c = document.createElement('canvas');
+      c.width = im.naturalWidth; c.height = im.naturalHeight;
+      c.getContext('2d').drawImage(im,0,0);
+      S.shots.push({ id:S.nextId++, label:f.name || 'pasted image', canvas:c, url });
+      if(--pending === 0) renderThumbs();
+    };
+    im.onerror = () => { if(--pending === 0) renderThumbs(); };
+    im.src = url;
+  });
+}
+function renderThumbs(){
+  $('#thumbs').innerHTML = S.shots.map(s =>
+    `<div class="thumb"><img src="${s.url}" alt="${esc(s.label)}"><button data-id="${s.id}" title="Remove">×</button></div>`).join('');
+  $('#thumbs').querySelectorAll('button').forEach(b => b.addEventListener('click', () => {
+    const id = +b.dataset.id;
+    const s = S.shots.find(x=>x.id===id);
+    if(s) URL.revokeObjectURL(s.url);
+    S.shots = S.shots.filter(x=>x.id!==id);
+    S.entries = S.entries.filter(e=>e.shotId!==id);
+    renderThumbs(); render();
+  }));
+  $('#run').disabled = S.shots.length === 0;
+}
+
+/* ============================================================
+   Wiring
+   ============================================================ */
+let saveT;
+$('#roster').addEventListener('input', () => {
+  readRoster();
+  clearTimeout(saveT);
+  saveT = setTimeout(() => saveRoster($('#roster').value), 400);
+});
+$('#restore').addEventListener('click', () => {
+  $('#roster').value = DEFAULT_ROSTER.trim();
+  readRoster(); saveRoster($('#roster').value); toast('Default list restored');
+});
+$('#drop').addEventListener('click', ()=> $('#file').click());
+$('#drop').addEventListener('keydown', e => { if(e.key==='Enter'||e.key===' '){ e.preventDefault(); $('#file').click(); }});
+$('#file').addEventListener('change', e => { addFiles(e.target.files); e.target.value=''; });
+['dragenter','dragover'].forEach(t => $('#drop').addEventListener(t, e => { e.preventDefault(); $('#drop').classList.add('hot'); }));
+['dragleave','drop'].forEach(t => $('#drop').addEventListener(t, e => { e.preventDefault(); $('#drop').classList.remove('hot'); }));
+$('#drop').addEventListener('drop', e => addFiles(e.dataTransfer.files));
+window.addEventListener('paste', e => {
+  if(document.activeElement && document.activeElement.tagName === 'TEXTAREA' && document.activeElement.id==='roster') return;
+  if(e.clipboardData && e.clipboardData.files.length) addFiles(e.clipboardData.files);
+});
+$('#clearshots').addEventListener('click', ()=>{
+  S.shots.forEach(s=>URL.revokeObjectURL(s.url));
+  S.shots = []; S.entries = []; renderThumbs(); render();
+});
+$('#run').addEventListener('click', ()=> {
+  if(fillIfEmpty()) toast('Loaded the built-in roster');
+  runOCR().catch(err => {
+    setProg(100, 'Reading failed: ' + err.message);
+    $('#run').disabled = false;
+  });
+});
+
+['thr','namex','scale','minscore'].forEach(k => {
+  const el = $('#'+k), out = $('#'+k+'v');
+  el.addEventListener('input', ()=>{
+    out.textContent = k==='minscore' ? (el.value/100).toFixed(2) : el.value;
+    if(k==='minscore'){ assignAll(); render(); }
+  });
+});
+
+function copyFrom(sel, msg){
+  const ta = $(sel);
+  navigator.clipboard.writeText(ta.value).then(()=>toast(msg)).catch(()=>{
+    ta.removeAttribute('readonly'); ta.select(); document.execCommand('copy');
+    ta.setAttribute('readonly',''); toast(msg);
+  });
+}
+$('#copycol').addEventListener('click', ()=> copyFrom('#outcol','Column copied'));
+$('#copycsv').addEventListener('click', ()=> copyFrom('#outcsv','CSV copied'));
+$('#dlcsv').addEventListener('click', ()=>{
+  const blob = new Blob([$('#outcsv').value], {type:'text/csv'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'war-day-points.csv';
+  a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href), 1000);
+});
+let toastT;
+function toast(m){
+  const t = $('#toast'); t.textContent = m; t.classList.add('on');
+  clearTimeout(toastT); toastT = setTimeout(()=>t.classList.remove('on'), 1600);
+}
+
+const savedRoster = loadRoster();
+$('#roster').value = (savedRoster && savedRoster.trim()) ? savedRoster : DEFAULT_ROSTER.trim();
+readRoster();
+showSaved();
+</script>
+</body>
+</html>

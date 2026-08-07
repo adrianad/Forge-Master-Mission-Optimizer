@@ -78,6 +78,22 @@ Gripz
 // Change this if you ever want a second copy of the page to keep its
 // own separate roster (e.g. a different clan).
 const STORE_KEY = 'warledger.roster.v1';
+
+// ── Where "Load from sheet" reads from ────────────────────────────
+// The id is deliberately blank: this file gets committed to a public
+// repo, and a sheet id in there is a readable sheet for anyone who
+// finds it. You paste the link once in the page and the browser keeps
+// it. Leave it empty when you commit.
+// The tab is read from firstRow downwards and taken as-is: blank cells
+// in the middle are kept, so the column you paste back stays lined up
+// with the spreadsheet rows. Only trailing blanks are dropped.
+// The sheet must be viewable by anyone with the link.
+const SHEET = {
+  id: '',
+  tab: 'Data Entry',
+  column: 'A',
+  firstRow: 5
+};
 </script>
 <style>
 :root{
@@ -253,13 +269,24 @@ details.adv label{display:block;font-size:12.5px;color:#8C99A8;margin-bottom:4px
 <!-- STEP 1 -->
 <section>
   <div class="step-head"><span class="step-num">STEP 1</span><h2 class="step-title">Paste the roster</h2></div>
-  <p class="step-note">Copy column A from the spreadsheet, in the exact row order you want back. Blank lines are kept, so the column you get out lines up row for row. Edits stay in this browser, so next time it's already here.</p>
+  <p class="step-note">The names in the order your spreadsheet uses. Pull them from the sheet, or paste and edit by hand — whatever's in the box is what gets used, and it's remembered in this browser. Blank lines are kept, so the column you get out lines up row for row.</p>
   <textarea id="roster" spellcheck="false" placeholder="zeeeev&#10;Hakudax01&#10;BigMIxx&#10;R1ceMano&#10;…"></textarea>
   <div class="row">
     <span class="tag" id="rostercount">0 names</span>
     <span class="tag" id="savedtag"></span>
-    <button class="ghost" id="restore" style="margin-left:auto">Restore default list</button>
+    <button class="primary" id="loadsheet" style="margin-left:auto">Load from sheet</button>
+    <button class="ghost" id="restore">Use built-in list</button>
   </div>
+  <div class="row"><span class="tag" id="sheetstatus"></span></div>
+  <details class="adv" id="sheetpanel">
+    <summary>Where the names come from</summary>
+    <div class="grid">
+      <div><label for="sheeturl">Sheet link or id</label><input type="text" id="sheeturl" spellcheck="false" placeholder="https://docs.google.com/spreadsheets/d/…"></div>
+      <div><label for="sheettab">Tab</label><input type="text" id="sheettab" spellcheck="false"></div>
+      <div><label for="sheetrow">First row with a name</label><input type="text" id="sheetrow" inputmode="numeric"></div>
+    </div>
+    <p class="step-note" style="margin:12px 0 0">Reads that column from that row downwards and takes it as it comes. The sheet has to be viewable by anyone with the link — nothing here signs you in. The link stays in this browser and is never part of the page, so it doesn't end up in the repo.</p>
+  </details>
 </section>
 
 <!-- STEP 2 -->
@@ -403,6 +430,113 @@ function fillIfEmpty(){
   $('#roster').value = DEFAULT_ROSTER.trim();
   readRoster(); saveRoster($('#roster').value);
   return true;
+}
+
+/* ============================================================
+   Reading the roster out of Google Sheets — no key, no sign-in.
+   Works only while the sheet is viewable by anyone with the link.
+   ============================================================ */
+const CFG_KEY = STORE_KEY + '.sheet';
+
+function loadCfg(){
+  try {
+    const j = localStorage.getItem(CFG_KEY);
+    return j ? Object.assign({}, SHEET, JSON.parse(j)) : Object.assign({}, SHEET);
+  } catch(e){ return Object.assign({}, SHEET); }
+}
+function saveCfg(c){ try { localStorage.setItem(CFG_KEY, JSON.stringify(c)); } catch(e){} }
+function sheetIdFrom(s){
+  const m = String(s).match(/\/spreadsheets\/d\/([A-Za-z0-9_-]+)/);
+  return m ? m[1] : String(s).trim();
+}
+function cfgFromInputs(){
+  return {
+    id: sheetIdFrom($('#sheeturl').value),
+    tab: $('#sheettab').value.trim() || SHEET.tab,
+    column: SHEET.column,
+    firstRow: Math.max(1, parseInt($('#sheetrow').value, 10) || SHEET.firstRow)
+  };
+}
+function showCfg(c){
+  $('#sheeturl').value = c.id;
+  $('#sheettab').value = c.tab;
+  $('#sheetrow').value = c.firstRow;
+}
+
+function parseCSV(text){
+  const rows=[]; let row=[], cell='', q=false;
+  for(let i=0;i<text.length;i++){
+    const c = text[i];
+    if(q){
+      if(c === '"'){ if(text[i+1] === '"'){ cell += '"'; i++; } else q = false; }
+      else cell += c;
+    }
+    else if(c === '"') q = true;
+    else if(c === ','){ row.push(cell); cell=''; }
+    else if(c === '\n'){ row.push(cell); rows.push(row); row=[]; cell=''; }
+    else if(c !== '\r') cell += c;
+  }
+  if(cell !== '' || row.length){ row.push(cell); rows.push(row); }
+  return rows;
+}
+/* Interior blanks stay — they hold the paste-back alignment. */
+function trimTail(list){
+  const a = list.slice();
+  while(a.length && !a[a.length-1].trim()) a.pop();
+  return a;
+}
+
+function jsonp(url, cbName, ms){
+  return new Promise((resolve, reject) => {
+    const el = document.createElement('script');
+    const timer = setTimeout(() => { done(); reject(new Error('timeout')); }, ms);
+    function done(){ clearTimeout(timer); try{ delete window[cbName]; }catch(e){ window[cbName]=undefined; } el.remove(); }
+    window[cbName] = d => { done(); resolve(d); };
+    el.onerror = () => { done(); reject(new Error('blocked')); };
+    el.src = url;
+    document.head.appendChild(el);
+  });
+}
+
+async function fetchRoster(cfg){
+  if(!cfg.id) throw new Error('Paste your sheet link first — the field under “Where the names come from”.');
+  const range = `${cfg.column}${cfg.firstRow}:${cfg.column}${cfg.firstRow + 995}`;
+  const base = `https://docs.google.com/spreadsheets/d/${encodeURIComponent(cfg.id)}/gviz/tq`;
+  const q = `sheet=${encodeURIComponent(cfg.tab)}&range=${range}&headers=0`;
+
+  // Preferred: plain CSV. Google may or may not allow this cross-origin.
+  try {
+    const res = await fetch(`${base}?tqx=out:csv&${q}`);
+    if(res.status === 404) throw new Error('gone');
+    if(res.ok){
+      const text = await res.text();
+      if(!/^\s*</.test(text)) return trimTail(parseCSV(text).map(r => (r[0]||'').trim()));
+    }
+  } catch(e){
+    if(e.message === 'gone') throw new Error("Google doesn't have a sheet with that id — check the link.");
+  }
+
+  // Fallback: JSONP, which sidesteps CORS entirely.
+  const cb = '__wl' + Math.random().toString(36).slice(2);
+  let data;
+  try { data = await jsonp(`${base}?tqx=out:json;responseHandler:${cb}&${q}`, cb, 15000); }
+  catch(e){ throw new Error('Could not reach the sheet. If it is private, set Share to “anyone with the link can view”.'); }
+
+  if(data && data.status === 'error'){
+    const first = (data.errors && data.errors[0]) || {};
+    const msg = String(first.detailed_message || first.message || 'unknown reason').replace(/<[^>]*>/g,'').trim();
+    throw new Error(msg.toLowerCase().includes('access')
+      ? 'The sheet needs sign-in. Set Share to “anyone with the link can view”.'
+      : 'Google refused: ' + msg);
+  }
+  const rows = (data && data.table && data.table.rows) || [];
+  return trimTail(rows.map(r => (r.c && r.c[0] && r.c[0].v != null) ? String(r.c[0].v).trim() : ''));
+}
+
+function setSheetStatus(msg, kind){
+  const el = $('#sheetstatus');
+  el.textContent = msg || '';
+  el.style.color = kind === 'bad' ? '#D98A8D' : kind === 'ok' ? '#6FB98A' : '#5E6C7C';
 }
 
 function readRoster(){
@@ -943,7 +1077,36 @@ $('#roster').addEventListener('input', () => {
 });
 $('#restore').addEventListener('click', () => {
   $('#roster').value = DEFAULT_ROSTER.trim();
-  readRoster(); saveRoster($('#roster').value); toast('Default list restored');
+  readRoster(); saveRoster($('#roster').value);
+  setSheetStatus('Using the list built into the page.');
+  toast('Built-in list restored');
+});
+['sheeturl','sheettab','sheetrow'].forEach(k =>
+  $('#'+k).addEventListener('change', () => saveCfg(cfgFromInputs())));
+$('#sheeturl').addEventListener('input', syncSheetReady);
+function syncSheetReady(){
+  const ready = !!sheetIdFrom($('#sheeturl').value);
+  $('#loadsheet').disabled = !ready;
+  $('#loadsheet').title = ready ? '' : 'Add your sheet link below first';
+}
+$('#loadsheet').addEventListener('click', async () => {
+  const cfg = cfgFromInputs();
+  saveCfg(cfg); showCfg(cfg);
+  const btn = $('#loadsheet');
+  btn.disabled = true;
+  setSheetStatus('Reading the sheet…');
+  try {
+    const names = await fetchRoster(cfg);
+    if(!names.length) throw new Error(`Nothing in ${cfg.tab}!${cfg.column}${cfg.firstRow} and below — check the tab name and the first row.`);
+    $('#roster').value = names.join('\n');
+    readRoster(); saveRoster($('#roster').value);
+    const n = names.filter(x => x.trim()).length;
+    setSheetStatus(`Loaded ${n} name${n===1?'':'s'} from ${cfg.tab}, starting at row ${cfg.firstRow}.`, 'ok');
+    toast('Roster loaded from the sheet');
+  } catch(err){
+    setSheetStatus(err.message, 'bad');
+  }
+  btn.disabled = false;
 });
 $('#drop').addEventListener('click', ()=> $('#file').click());
 $('#drop').addEventListener('keydown', e => { if(e.key==='Enter'||e.key===' '){ e.preventDefault(); $('#file').click(); }});
@@ -998,6 +1161,13 @@ function toast(m){
   clearTimeout(toastT); toastT = setTimeout(()=>t.classList.remove('on'), 1600);
 }
 
+const startCfg = loadCfg();
+showCfg(startCfg);
+syncSheetReady();
+if(!startCfg.id){
+  $('#sheetpanel').open = true;
+  setSheetStatus('Add your sheet link below to pull names from it — it stays in this browser.');
+}
 const savedRoster = loadRoster();
 $('#roster').value = (savedRoster && savedRoster.trim()) ? savedRoster : DEFAULT_ROSTER.trim();
 readRoster();

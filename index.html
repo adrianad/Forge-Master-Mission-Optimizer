@@ -3,1175 +3,416 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>War Ledger — leaderboard screenshot to spreadsheet column</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@700;800&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
-
-<!-- ══════════════════════════════════════════════════════════════════
-     THE CLAN ROSTER — this is the only bit you'll ever need to edit.
-
-     One name per line, between the backticks, in the row order your
-     spreadsheet uses. It's what you get on a fresh browser, what the
-     "Restore default list" button brings back, and what fills in if
-     you start a read with an empty box.
-
-     Day to day you don't have to touch this: whatever is in the box
-     is saved in your browser and comes back next time.
-     ══════════════════════════════════════════════════════════════════ -->
-<script>
-const DEFAULT_ROSTER = `
-zeeeev
-Hakudax01
-BigMIxx
-R1ceMano
-NeatSiren28025
-mfmfmf
-Lise22
-TheBlackC4t
-DreamEater
-NotANinja
-Hispleasure
-kryce
-ReconzZ
-Asthae
-popoye
-UnemploymedBoss
-Blocki
-GrizzlySuko
-Zwyrodnialec
-BabanizJK
-ShatnersLoveSoc
-Jakerz
-OpticFang34690
-Gio93
-LankyMouse32256
-nidpsoxto
-GiantHydra41903
-DomTheDestroyer
-Marius619
-HandsomeHusband
-Lyro
-GreenJade66284
-MajorPetal1606
-Thesilverarthur
-KovalO
-Baleine12345678
-Nutley123
-WeWillieWinkie
-Cochonne
-Clipper97
-StUwU
-A5hS
-R3L4X
-vestalas
-zhobro
-Maya2001
-Sebbutz
-Vanderlau
-SlyPhant12687
-ForgottenCreek
-Gripz
-`;
-
-// Change this if you ever want a second copy of the page to keep its
-// own separate roster (e.g. a different clan).
-const STORE_KEY = 'warledger.roster.v1';
-
-// ── Where "Load from sheet" reads from ────────────────────────────
-// The id is deliberately blank: this file gets committed to a public
-// repo, and a sheet id in there is a readable sheet for anyone who
-// finds it. You paste the link once in the page and the browser keeps
-// it. Leave it empty when you commit.
-// The tab is read from firstRow downwards and taken as-is: blank cells
-// in the middle are kept, so the column you paste back stays lined up
-// with the spreadsheet rows. Only trailing blanks are dropped.
-// The sheet must be viewable by anyone with the link.
-const SHEET = {
-  id: '',
-  tab: 'Data Entry',
-  column: 'A',
-  firstRow: 5
-};
-</script>
+<title>Mission board optimiser</title>
 <style>
 :root{
-  --ground:#12161C; --ground-2:#1B222C; --line:#2C3642;
-  --paper:#E9ECEF; --paper-hi:#FFFFFF; --paper-dim:#CFD6DD;
-  --ink:#0B0E12; --ink-soft:#4A5563;
-  --ally:#2F91E0; --enemy:#C1272D; --gold:#F5B915; --ok:#2E9E5B;
-  --r:14px;
+  --bg:#faf9f7; --card:#fff; --ink:#16150f; --ink2:#5c5a52; --ink3:#8b897f;
+  --line:#e3e1d9; --accent:#1d9e75; --accentbg:#e1f5ee; --warn:#ba7517; --warnbg:#faeeda;
+  --radius:10px;
+}
+@media (prefers-color-scheme:dark){
+  :root{ --bg:#141412; --card:#1d1d1a; --ink:#f2f1ec; --ink2:#b3b1a6; --ink3:#84827a;
+         --line:#33322d; --accent:#5dcaa5; --accentbg:#0f2f26; --warn:#efa027; --warnbg:#3a2a10; }
 }
 *{box-sizing:border-box}
-html,body{margin:0;padding:0}
-body{
-  background:var(--ground);
-  color:var(--paper);
-  font-family:"IBM Plex Sans",system-ui,sans-serif;
-  font-size:15px; line-height:1.5;
-  -webkit-font-smoothing:antialiased;
-}
-.wrap{max-width:1040px;margin:0 auto;padding:0 20px 80px}
-
-/* ---------- header ---------- */
-header{position:relative;margin-bottom:34px}
-.banner{
-  height:10px;margin:0 -20px 26px;
-  background:linear-gradient(90deg,var(--ally) 0%,var(--ally) 48%,var(--enemy) 52%,var(--enemy) 100%);
-}
-h1{
-  font-family:"Baloo 2",system-ui,sans-serif;font-weight:800;
-  font-size:clamp(30px,5.4vw,46px);line-height:1.02;letter-spacing:-.02em;
-  margin:0 0 8px;color:var(--paper-hi);
-}
-h1 .dim{color:var(--ally)}
-.sub{color:#9AA7B5;max-width:60ch;margin:0}
-.sub code{font-family:"IBM Plex Mono",monospace;font-size:.9em;color:var(--paper-dim)}
-
-/* ---------- steps ---------- */
-section{margin-top:34px}
-.step-head{display:flex;align-items:baseline;gap:12px;margin-bottom:12px}
-.step-num{
-  font-family:"IBM Plex Mono",monospace;font-size:12px;font-weight:500;
-  color:var(--ally);border:1px solid var(--line);border-radius:99px;
-  padding:2px 9px;flex:none;letter-spacing:.06em;
-}
-.step-title{font-family:"Baloo 2",sans-serif;font-weight:700;font-size:22px;color:var(--paper-hi);margin:0}
-.step-note{color:#8C99A8;font-size:13.5px;margin:0 0 14px}
-
-/* ---------- controls ---------- */
-textarea,input[type=text],select{
-  font-family:"IBM Plex Mono",monospace;font-size:13.5px;
-  background:var(--ground-2);color:var(--paper);
-  border:1px solid var(--line);border-radius:10px;padding:10px 12px;width:100%;
-}
-textarea{resize:vertical;min-height:150px;line-height:1.45}
-textarea:focus,input:focus,select:focus,button:focus-visible{
-  outline:2px solid var(--ally);outline-offset:2px;
-}
-button{
-  font-family:"IBM Plex Sans",sans-serif;font-weight:600;font-size:14px;
-  background:var(--paper);color:var(--ink);border:none;border-radius:10px;
-  padding:10px 18px;cursor:pointer;
-}
-button:hover{background:var(--paper-hi)}
-button.primary{background:var(--ally);color:#06131E}
-button.primary:hover{filter:brightness(1.12)}
-button.ghost{background:transparent;color:var(--paper-dim);border:1px solid var(--line)}
-button.ghost:hover{background:var(--ground-2);color:var(--paper-hi)}
-button:disabled{opacity:.4;cursor:not-allowed}
-.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:10px}
-.tag{font-family:"IBM Plex Mono",monospace;font-size:12px;color:#8C99A8}
-
-/* ---------- dropzone ---------- */
-#drop{
-  border:2px dashed var(--line);border-radius:var(--r);
-  padding:30px 20px;text-align:center;color:#8C99A8;cursor:pointer;
-  transition:border-color .15s,background .15s;
-}
-#drop:hover,#drop.hot{border-color:var(--ally);background:rgba(47,145,224,.07);color:var(--paper)}
-#drop b{color:var(--paper-hi);font-weight:600}
-#thumbs{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
-.thumb{position:relative;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--ground-2)}
-.thumb img{display:block;height:88px;width:auto}
-.thumb button{
-  position:absolute;top:3px;right:3px;padding:0;width:20px;height:20px;line-height:18px;
-  border-radius:6px;background:rgba(11,14,18,.8);color:#fff;font-size:13px;
-}
-
-/* ---------- progress ---------- */
-#prog{margin-top:14px;display:none}
-#prog.on{display:block}
-.bar{height:6px;background:var(--ground-2);border-radius:99px;overflow:hidden}
-.bar i{display:block;height:100%;background:var(--ally);width:0%;transition:width .2s}
-#progtxt{font-family:"IBM Plex Mono",monospace;font-size:12px;color:#8C99A8;margin-top:6px}
-
-/* ---------- review: the proof strips ---------- */
-.shot-group{margin-top:20px}
-.shot-name{
-  font-family:"IBM Plex Mono",monospace;font-size:12px;color:#8C99A8;
-  border-bottom:1px solid var(--line);padding-bottom:6px;margin-bottom:12px;
-  display:flex;justify-content:space-between;gap:10px;
-}
-.entry{
-  display:grid;grid-template-columns:minmax(180px,300px) 118px 1fr auto;
-  gap:12px;align-items:center;
-  background:var(--paper);color:var(--ink);
-  border-radius:var(--r);padding:10px 12px;margin-bottom:10px;
-  box-shadow:0 2px 0 rgba(0,0,0,.5);
-}
-.entry.flag{box-shadow:0 2px 0 rgba(0,0,0,.5),0 0 0 2px var(--gold)}
-.entry.bad{box-shadow:0 2px 0 rgba(0,0,0,.5),0 0 0 2px var(--enemy)}
-.entry.off{opacity:.45}
-.proof{border-radius:8px;overflow:hidden;background:var(--paper-dim);border:1px solid rgba(11,14,18,.18)}
-.proof img{display:block;width:100%;height:auto}
-.entry input.val{
-  font-family:"Baloo 2",sans-serif;font-weight:800;font-size:19px;letter-spacing:-.01em;
-  background:var(--paper-hi);color:var(--ink);border:1px solid rgba(11,14,18,.2);
-  border-radius:8px;padding:5px 8px;text-align:right;
-}
-.entry select{
-  font-family:"IBM Plex Sans",sans-serif;font-size:14px;font-weight:500;
-  background:var(--paper-hi);color:var(--ink);border:1px solid rgba(11,14,18,.2);
-}
-.meta{font-family:"IBM Plex Mono",monospace;font-size:11px;color:var(--ink-soft);white-space:nowrap}
-.meta .warnpill{color:#8A5A00;background:rgba(245,185,21,.28);padding:1px 6px;border-radius:5px}
-.meta .badpill{color:#7E1519;background:rgba(193,39,45,.2);padding:1px 6px;border-radius:5px}
-.readname{font-family:"IBM Plex Mono",monospace;font-size:11px;color:var(--ink-soft);margin-top:3px}
-.cell{min-width:0}
-
-/* ---------- output ---------- */
-.outgrid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
-.outbox h3{font-family:"Baloo 2",sans-serif;font-weight:700;font-size:16px;margin:0 0 4px;color:var(--paper-hi)}
-.outbox p{font-size:12.5px;color:#8C99A8;margin:0 0 8px}
-.outbox textarea{min-height:240px}
-.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
-.chip{
-  font-family:"IBM Plex Mono",monospace;font-size:11.5px;
-  background:var(--ground-2);border:1px solid var(--line);color:#9AA7B5;
-  padding:3px 8px;border-radius:99px;
-}
-.stat{font-family:"IBM Plex Mono",monospace;font-size:12.5px;color:#9AA7B5;margin-top:10px}
-.stat b{color:var(--paper-hi)}
-
-/* ---------- misc ---------- */
-details.adv{margin-top:22px;border:1px solid var(--line);border-radius:12px;padding:12px 14px}
-details.adv summary{cursor:pointer;font-size:13.5px;color:#9AA7B5;font-weight:600}
-details.adv .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px;margin-top:14px}
-details.adv label{display:block;font-size:12.5px;color:#8C99A8;margin-bottom:4px}
-.empty{color:#7C8896;font-size:14px;padding:18px 0}
-.err{background:rgba(193,39,45,.12);border:1px solid var(--enemy);color:#F0B7B9;
-     padding:10px 12px;border-radius:10px;font-size:13.5px;margin-bottom:10px}
-.toast{
-  position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(20px);
-  background:var(--ok);color:#04140A;font-weight:600;font-size:14px;
-  padding:9px 18px;border-radius:99px;opacity:0;pointer-events:none;transition:all .2s;
-}
-.toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
-@media (max-width:760px){
-  .outgrid{grid-template-columns:1fr}
-  .entry{grid-template-columns:1fr;gap:8px}
-  .entry input.val{text-align:left}
-}
-@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;}
+.wrap{max-width:880px;margin:0 auto;padding:32px 20px 80px}
+h1{font-size:26px;font-weight:600;margin:0 0 6px;letter-spacing:-.01em}
+h2{font-size:19px;font-weight:600;margin:36px 0 10px;letter-spacing:-.01em}
+h3{font-size:15px;font-weight:600;margin:20px 0 8px}
+p{margin:0 0 12px;color:var(--ink2)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:18px 20px;margin:14px 0}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px}
+table{width:100%;border-collapse:collapse;font-size:14px;margin:8px 0}
+th{text-align:left;font-weight:600;color:var(--ink3);font-size:12px;text-transform:uppercase;
+   letter-spacing:.04em;padding:6px 8px;border-bottom:1px solid var(--line)}
+td{padding:7px 8px;border-bottom:1px solid var(--line)}
+tr:last-child td{border-bottom:none}
+td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+.sl{display:grid;grid-template-columns:1fr 130px 34px;align-items:center;gap:12px;margin:9px 0}
+.sl label{font-size:14px}
+.sl .sub{display:block;font-size:11.5px;color:var(--ink3)}
+.sl output{font-variant-numeric:tabular-nums;font-weight:600;text-align:right;font-size:15px}
+input[type=range]{width:100%;accent-color:var(--accent)}
+.stage{font-size:15px;font-weight:600;color:var(--accent)}
+input[type=number],select{background:var(--card);color:var(--ink);border:1px solid var(--line);
+  border-radius:6px;padding:7px 9px;font:inherit;font-size:14px}
+.row{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:6px 0}
+.bar{display:flex;align-items:baseline;gap:10px;padding:12px 14px;border:1px solid var(--line);
+  border-radius:8px;margin:8px 0;background:var(--card)}
+.bar .n{font-size:24px;font-weight:600;font-variant-numeric:tabular-nums;min-width:64px;color:var(--accent)}
+.bar .t{font-size:14px;color:var(--ink2)}
+.bar .t b{color:var(--ink);font-weight:600}
+.flow{display:flex;flex-direction:column;gap:0;margin:12px 0}
+.step{display:flex;gap:12px;align-items:flex-start;padding:12px 14px;border:1px solid var(--line);
+  border-radius:8px;background:var(--card)}
+.step .k{flex:0 0 26px;height:26px;border-radius:50%;background:var(--accentbg);color:var(--accent);
+  display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600}
+.arrow{height:16px;border-left:2px solid var(--line);margin-left:27px}
+.pill{display:inline-block;padding:2px 9px;border-radius:99px;font-size:12px;font-weight:600}
+.yes{background:var(--accentbg);color:var(--accent)}
+.no{background:var(--warnbg);color:var(--warn)}
+.big{font-size:30px;font-weight:600;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.metric{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:14px 16px}
+.metric .lab{font-size:12px;color:var(--ink3);text-transform:uppercase;letter-spacing:.04em}
+.note{font-size:13px;color:var(--ink3);line-height:1.6}
+.chk{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:10px 0}
+.verdict{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-top:12px}
+.v{border:1px solid var(--line);border-radius:8px;padding:10px 12px;background:var(--card)}
+.v .h{font-size:12px;color:var(--ink3);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px}
+code{background:var(--accentbg);color:var(--accent);padding:1px 5px;border-radius:4px;font-size:13px}
+details{margin-top:6px;border-top:1px solid var(--line);padding-top:10px}
+summary{cursor:pointer;font-size:14px;font-weight:600;color:var(--accent);list-style:none}
+summary::-webkit-details-marker{display:none}
+summary::before{content:"+ ";font-weight:600}
+details[open] summary::before{content:"\2212 "}
+details p{margin-top:10px}
+.slots{margin-bottom:0}
+.exrow{display:grid;grid-template-columns:82px 1fr;gap:12px;align-items:baseline;margin:7px 0}
+.exk{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--ink3)}
+.exl2{font-size:14px;color:var(--ink2);line-height:1.9}
+.exl2 b{color:var(--ink)}
+.slotpill{display:inline-block;border:1px solid var(--line);border-radius:6px;padding:4px 10px;
+  margin:0 6px 6px 0;font-size:13px;color:var(--ink2)}
+.slotpill b{color:var(--ink)}
+.ex{padding:14px 0;border-top:1px solid var(--line)}
+.ex:first-child{border-top:none;padding-top:0}
+.exl{font-size:15px;line-height:2.1}
+.exs{display:inline-block;background:var(--accentbg);color:var(--accent);font-weight:600;
+  padding:2px 12px;border-radius:6px;margin-left:4px}
+.foot{margin-top:44px;padding-top:18px;border-top:1px solid var(--line);font-size:13px;color:var(--ink3)}
+.foot li{margin:5px 0}
 </style>
 </head>
 <body>
 <div class="wrap">
 
-<header>
-  <div class="banner"></div>
-  <h1>War Ledger<span class="dim">.</span></h1>
-  <p class="sub">Reads the daily points ranking out of clan-war screenshots, lines the numbers up with your roster, and hands you back one column you can paste straight into <code>Data Entry</code>. Everything runs in your browser — no upload, no key, no server.</p>
-</header>
-
-<!-- STEP 1 -->
-<section>
-  <div class="step-head"><span class="step-num">STEP 1</span><h2 class="step-title">Paste the roster</h2></div>
-  <p class="step-note">The names in the order your spreadsheet uses. Pull them from the sheet, or paste and edit by hand — whatever's in the box is what gets used, and it's remembered in this browser. Blank lines are kept, so the column you get out lines up row for row.</p>
-  <textarea id="roster" spellcheck="false" placeholder="zeeeev&#10;Hakudax01&#10;BigMIxx&#10;R1ceMano&#10;…"></textarea>
-  <div class="row">
-    <span class="tag" id="rostercount">0 names</span>
-    <span class="tag" id="savedtag"></span>
-    <button class="primary" id="loadsheet" style="margin-left:auto">Load from sheet</button>
-    <button class="ghost" id="restore">Use built-in list</button>
-  </div>
-  <div class="row"><span class="tag" id="sheetstatus"></span></div>
-  <details class="adv" id="sheetpanel">
-    <summary>Where the names come from</summary>
-    <div class="grid">
-      <div><label for="sheeturl">Sheet link or id</label><input type="text" id="sheeturl" spellcheck="false" placeholder="https://docs.google.com/spreadsheets/d/…"></div>
-      <div><label for="sheettab">Tab</label><input type="text" id="sheettab" spellcheck="false"></div>
-      <div><label for="sheetrow">First row with a name</label><input type="text" id="sheetrow" inputmode="numeric"></div>
-    </div>
-    <p class="step-note" style="margin:12px 0 0">Reads that column from that row downwards and takes it as it comes. The sheet has to be viewable by anyone with the link — nothing here signs you in. The link stays in this browser and is never part of the page, so it doesn't end up in the repo.</p>
-  </details>
-</section>
-
-<!-- STEP 2 -->
-<section>
-  <div class="step-head"><span class="step-num">STEP 2</span><h2 class="step-title">Add the screenshots</h2></div>
-  <p class="step-note">Full-screen shots of the ranking popup. Overlap between shots is fine — duplicates get merged. You can also just paste with Ctrl+V.</p>
-  <div id="drop" tabindex="0" role="button" aria-label="Add screenshots">
-    <b>Drop screenshots here</b><br>or click to pick files · Ctrl+V to paste
-  </div>
-  <input type="file" id="file" accept="image/*" multiple hidden>
-  <div id="thumbs"></div>
-  <div class="row">
-    <button class="primary" id="run" disabled>Read screenshots</button>
-    <button class="ghost" id="clearshots">Remove all</button>
-  </div>
-  <div id="prog"><div class="bar"><i id="barfill"></i></div><div id="progtxt"></div></div>
-</section>
-
-<!-- STEP 3 -->
-<section>
-  <div class="step-head"><span class="step-num">STEP 3</span><h2 class="step-title">Check the reads</h2></div>
-  <p class="step-note">Each line shows the pixels it came from. Skim the strips against the numbers — a gold outline means the value looked odd, red means no roster match. Fix anything wrong right here.</p>
-  <div id="review"><div class="empty">Nothing read yet.</div></div>
-</section>
-
-<!-- STEP 4 -->
-<section>
-  <div class="step-head"><span class="step-num">STEP 4</span><h2 class="step-title">Copy it back</h2></div>
-  <div class="outgrid">
-    <div class="outbox">
-      <h3>Points column</h3>
-      <p>One line per roster line, same order. Paste into the day's column.</p>
-      <textarea id="outcol" spellcheck="false" readonly></textarea>
-      <div class="row"><button class="primary" id="copycol">Copy column</button></div>
-    </div>
-    <div class="outbox">
-      <h3>Name,points</h3>
-      <p>CSV with names attached, for a sanity check or a separate sheet.</p>
-      <textarea id="outcsv" spellcheck="false" readonly></textarea>
-      <div class="row">
-        <button id="copycsv">Copy CSV</button>
-        <button class="ghost" id="dlcsv">Download .csv</button>
-      </div>
-    </div>
-  </div>
-  <div class="stat" id="stat"></div>
-  <div class="chips" id="missing"></div>
-</section>
-
-<details class="adv">
-  <summary>Tuning — only touch this if reads come back empty or wrong</summary>
-  <div class="grid">
-    <div>
-      <label for="thr">Glyph brightness cut-off — <span id="thrv">246</span></label>
-      <input type="range" id="thr" min="200" max="254" value="246" style="width:100%">
-      <p class="step-note" style="margin:6px 0 0">The text is white with a black outline. This picks up the white fill. Lower it if letters come out broken.</p>
-    </div>
-    <div>
-      <label for="namex">Name column starts at — <span id="namexv">35</span>% of the card</label>
-      <input type="range" id="namex" min="10" max="60" value="35" style="width:100%">
-      <p class="step-note" style="margin:6px 0 0">Everything left of this (rank number, avatar) is ignored.</p>
-    </div>
-    <div>
-      <label for="scale">Upscale before reading — <span id="scalev">3</span>×</label>
-      <input type="range" id="scale" min="2" max="5" value="3" style="width:100%">
-      <p class="step-note" style="margin:6px 0 0">Higher is slower, occasionally more accurate.</p>
-    </div>
-    <div>
-      <label for="minscore">Name match strictness — <span id="minscorev">0.55</span></label>
-      <input type="range" id="minscore" min="30" max="90" value="55" style="width:100%">
-      <p class="step-note" style="margin:6px 0 0">Below this, a read is left unassigned instead of guessed.</p>
-    </div>
-  </div>
-  <div class="row"><label style="display:flex;gap:8px;align-items:center;color:#9AA7B5;font-size:13px">
-    <input type="checkbox" id="debug" style="width:auto"> Show what the reader actually saw (debug strips)
-  </label></div>
+<h1>Mission board optimiser</h1>
+<h2>1. How the board actually works</h2>
+<div class="card">
+<p><b>You get 3 missions a day from a board of 6, plus one free refresh.</b></p>
+<p><b>Every mission pays out 4 reward slots.</b> Each slot independently rolls one of the six
+resources at 1 in 6 odds, so a mission can roll four of the same thing or four different things.</p>
+<details>
+<summary>Why the amounts are not the interesting part</summary>
+<p><b>The amount is not random.</b> This is the part people get wrong. Each resource has a fixed
+base amount set by the mission's level — a goo slot on a given mission always pays the same number.
+So a mission is never "a big one" or "a small one": the only thing that varies is <i>which</i> six
+resources its four slots land on.</p>
+<p>Mission level comes from your Hammer Thief level, which unlocks a bracket of levels the board can
+roll from. Level moves the base amounts by roughly <b>1% per level</b>, and your bracket only spans
+6–10 levels, so level is worth a few percent at most. The reward mix is what matters, by a mile.
+Goo is the one exception worth knowing about: it is a small stepped integer rather than a smooth
+curve, so it can jump from 6 to 7 to 8 inside a single bracket.</p>
+<p>Because the board can roll any level in your bracket, the per-slot figures below are averages
+across that range. The range is shown next to each one.</p>
 </details>
+</div>
+
+<h2>2. Your setup</h2>
+<div class="card">
+  <div class="row">
+    <label for="ht"><b>Hammer Thief level</b></label>
+    <span class="stage" id="stagenote"></span>
+    <input type="number" id="ht" value="100" min="1" max="999" step="1" style="width:80px">
+  </div>
+  <div class="row" style="margin-top:10px">
+    <label for="goobonus"><b>Goo bonus</b></label>
+    <input type="number" id="goobonus" value="100" min="0" max="100" step="5" style="width:80px">
+    <span class="note">% — upgraded in 5% steps, caps at 100% (= double goo)</span>
+  </div>
+  <p class="note" id="lvlinfo"></p>
+  <h3>What one slot pays you</h3>
+  <table id="basetbl"></table>
+  <p class="note">A range means the mission's level decides which end you land on. Bonus applies to
+  goo only, and changes what you collect, not which missions are worth running.</p>
+</div>
+
+<h2>3. How much you care</h2>
+<div class="card">
+<p>Rate each resource 0–10. This is <b>value per slot</b>, not per unit: "how happy am I to see this
+land in a slot, compared to the others?" Everything below is recalculated live.</p>
+<div id="sliders"></div>
+<p class="note" id="wnote"></p>
+</div>
+
+<h2>4. Scoring a mission</h2>
+<p>Score a mission by adding up the ratings of its four slots, using the numbers you just set —
+<span id="ratingrecap"></span>. That is the whole calculation. Highest possible is
+<span id="maxscore"></span>, lowest is 0.</p>
+<div class="card">
+<p style="margin-bottom:14px">Two examples, showing what each slot pays and then the score it
+works out to. Amounts are the top of your bracket's range.</p>
+<div id="examples"></div>
+</div>
+
+<h2>5. Your strategy</h2>
+<p>The bar a mission has to clear <b>rises</b> as you spend your three runs, because a fresh board's
+best pick is worth more than its third-best pick — so the refresh should buy you a fresh
+<i>first</i> pick, never a fresh third pick.</p>
+
+<div id="bars"></div>
+
+<h3>Step by step</h3>
+<div class="flow" id="flow"></div>
+
+<h2>6. Check a mission</h2>
+<div class="card">
+<p>Pick the four slots you're looking at:</p>
+<div class="chk" id="chk"></div>
+<div class="verdict" id="verdict"></div>
+</div>
+
+<h2>7. What you'll average</h2>
+<div class="card">
+  <div class="grid2" style="margin-bottom:14px">
+    <div class="metric"><div class="lab">Goo per day</div><div class="big" id="mGoo">–</div>
+      <div class="note" id="mGooSub"></div></div>
+    <div class="metric"><div class="lab">Goo per week</div><div class="big" id="mGooW">–</div>
+      <div class="note">7 days, 21 missions</div></div>
+  </div>
+  <table id="daily"></table>
+  <p class="note" id="refreshnote"></p>
+</div>
+
+<div class="foot">
+<b>Assumptions and sources</b>
+<ul>
+<li>Base amounts and level brackets read from <code>MissionRewardLibrary.json</code> and
+<code>MissionLevelLibrary.json</code>; board size, slot count and daily energy from
+<code>MissionBaseConfig.json</code>.</li>
+<li>Each of the four slots is assumed to be an independent, equally likely roll across the six
+resources. The refresh is assumed free and to replace all six missions without costing you a run.</li>
+<li>Mission levels are assumed uniform across your bracket. Board-to-board level differences are
+ignored in the strategy because they are worth ~1% per level — if two missions have identical
+rewards, take the higher level one.</li>
+<li>Daily figures come from 80,000 simulated days playing the strategy above.</li>
+<li>Per-slot amounts are the mean across every mission level in your bracket, so they are not values
+that appear verbatim in the config — the range column shows what a single mission can actually pay.</li>
+<li>The goo bonus scales what you collect, not the bars. Rate goo higher if you want the strategy
+itself to chase it harder.</li>
+<li>Hammer Thief level converts to the in-game stage label as
+world = floor((level−1)/10)+1, stage = ((level−1) mod 10)+1, so level 100 is stage 10-10.</li>
+</ul>
+</div>
 
 </div>
-<div class="toast" id="toast"></div>
-
 <script>
-"use strict";
-
-/* ============================================================
-   State
-   ============================================================ */
-const S = {
-  roster: [],   // {raw, norm, folded, tail}
-  shots: [],    // {id, label, canvas, url}
-  entries: [],  // {id, shotId, proof, ocrName, value, warns, assign, score, debug[]}
-  nextId: 1
+const DATA = {"types":["Coins","SkillSummonTickets","Eggshells","TechPotions","ClockWinders","GuildPotions"],"amounts":[[5500,184,91,92,69,3],[5555,186,92,93,70,3],[5611,188,93,94,70,4],[5667,190,94,95,71,4],[5723,191,95,96,72,5],[5781,193,96,97,73,5],[5838,195,97,98,73,6],[5897,197,98,99,74,6],[5956,199,99,100,75,6],[6015,201,100,101,75,6],[6075,203,101,102,76,6],[6136,205,102,103,77,6],[6198,207,103,104,78,6],[6260,209,104,105,79,6],[6322,212,105,106,79,6],[6385,214,106,107,80,6],[6449,216,107,108,81,7],[6514,218,108,109,82,7],[6579,220,109,110,83,7],[6645,222,110,111,83,8],[6711,225,111,112,84,8],[6778,227,112,113,85,8],[6846,229,113,115,86,8],[6914,231,114,116,87,8],[6984,234,116,117,88,8],[7053,236,117,118,88,8],[7124,238,118,119,89,8],[7195,241,119,120,90,8],[7267,243,120,122,91,8],[7340,246,121,123,92,8],[7413,248,123,124,93,8],[7487,250,124,125,94,8],[7562,253,125,126,95,8],[7638,256,126,128,96,8],[7714,258,128,129,97,8],[7791,261,129,130,98,8],[7869,263,130,132,99,8],[7948,266,132,133,100,8],[8027,269,133,134,101,8],[8108,271,134,136,102,8],[8189,274,135,137,103,8],[8271,277,137,138,104,9],[8353,279,138,140,105,9],[8437,282,140,141,106,10],[8521,285,141,143,107,10],[8606,288,142,144,108,10],[8693,291,144,145,109,10],[8779,294,145,147,110,10],[8867,297,147,148,111,10],[8956,300,148,150,112,10],[9045,303,150,151,113,10],[9136,306,151,153,115,10],[9227,309,153,154,116,10],[9320,312,154,156,117,10],[9413,315,156,157,118,10],[9507,318,157,159,119,10],[9602,321,159,161,120,10],[9698,324,160,162,122,10],[9795,328,162,164,123,10],[9893,331,164,165,124,10]],"brackets":[[0,1,6],[10,1,7],[11,2,8],[14,3,9],[16,4,10],[18,5,11],[22,6,12],[27,7,13],[31,8,14],[36,9,15],[40,10,16],[44,11,17],[50,12,18],[60,13,19],[71,14,20],[82,15,21],[92,16,22],[103,17,23],[114,18,24],[125,19,25],[135,20,26],[144,21,27],[151,22,28],[158,23,29],[165,24,30],[172,25,31],[179,26,32],[186,27,33],[193,28,34],[200,29,35],[207,30,36],[214,31,37],[222,32,38],[229,33,39],[236,34,40],[243,35,41],[250,36,42],[257,37,43],[264,38,44],[271,39,45],[279,40,46],[286,41,47],[293,42,48],[299,43,49],[307,44,50],[314,45,51],[321,46,52],[328,47,53],[335,48,54],[342,48,55],[349,49,56],[356,49,57],[363,49,58],[370,50,58],[378,51,58],[385,51,59],[392,51,60],[397,52,60],[398,53,60],[399,54,60]]};
+const LABELS = {
+  Coins:["Coins",""],
+  SkillSummonTickets:["Skill tickets","SkillSummonTickets"],
+  Eggshells:["Eggshells","Eggshells"],
+  TechPotions:["Zombie blood","TechPotions"],
+  ClockWinders:["Mount keys","ClockWinders"],
+  GuildPotions:["Goo","GuildPotions / green vials"]
 };
-const $ = s => document.querySelector(s);
-const opts = () => ({
-  thr: +$('#thr').value,
-  namex: +$('#namex').value / 100,
-  scale: +$('#scale').value,
-  minscore: +$('#minscore').value / 100,
-  debug: $('#debug').checked
+const DEFAULTS = {Coins:0, SkillSummonTickets:5, Eggshells:6, TechPotions:0, ClockWinders:5, GuildPotions:10};
+const T = DATA.types, NT = 6, GOO = T.indexOf("GuildPotions");
+
+const COMPS = (()=>{ const out=[];
+  const rec=(i,left,c)=>{ if(i===NT-1){ const cc=c.concat([left]);
+      let mult=24; for(const x of cc){ let f=1; for(let k=2;k<=x;k++) f*=k; mult/=f; }
+      out.push({c:cc, p:mult/1296}); return; }
+    for(let v=0;v<=left;v++) rec(i+1,left-v,c.concat([v])); };
+  rec(0,4,[]); return out; })();
+
+function bracket(ht){ let b=DATA.brackets[0];
+  for(const x of DATA.brackets) if(x[0]<=ht) b=x; return b; }
+function baseAmounts(lo,hi){
+  const a=new Array(NT).fill(0), mn=new Array(NT).fill(Infinity), mx=new Array(NT).fill(-Infinity);
+  let n=0;
+  for(let L=lo;L<=hi;L++){ n++; for(let i=0;i<NT;i++){ const v=DATA.amounts[L-1][i];
+    a[i]+=v; if(v<mn[i]) mn[i]=v; if(v>mx[i]) mx[i]=v; } }
+  return { avg:a.map(v=>v/n), min:mn, max:mx }; }
+function parseHT(str){ const m=String(str).trim().match(/^(\d+)\s*[-\u2013\/]\s*(\d+)$/);
+  if(m) return (+m[1]-1)*10 + (+m[2]);
+  const n=parseInt(str,10); return isNaN(n)?0:n; }
+function stageOf(lvl){ return `${Math.floor((lvl-1)/10)+1}-${((lvl-1)%10)+1}`; }
+function nCk(n,k){ let r=1; for(let i=0;i<k;i++) r=r*(n-i)/(i+1); return r; }
+
+function computeV(w){
+  const m=new Map();
+  for(const comp of COMPS){ let s=0; for(let i=0;i<NT;i++) s+=comp.c[i]*w[i];
+    s=Math.round(s*1e6)/1e6; m.set(s,(m.get(s)||0)+comp.p); }
+  const pairs=[...m.entries()].sort((a,b)=>a[0]-b[0]);
+  const q=[]; let suf=0;
+  for(let k=pairs.length-1;k>=0;k--){ suf+=pairs[k][1]; q[k]=suf; }
+  const V=[0,0,0,0]; let prev=0;
+  for(let k=0;k<pairs.length;k++){ const d=pairs[k][0]-prev; prev=pairs[k][0]; if(d<=0) continue;
+    const p=q[k], pm=[]; for(let i=0;i<=6;i++) pm[i]=nCk(6,i)*Math.pow(p,i)*Math.pow(1-p,6-i);
+    const Pge=[]; let g=1; for(let i=0;i<=6;i++){ Pge[i]=g; g-=pm[i]; }
+    for(let mm=1;mm<=3;mm++){ let s=0; for(let i=1;i<=mm;i++) s+=Pge[i]; V[mm]+=d*s; } }
+  return V;
+}
+
+function simulate(w,bars,N){
+  const yields=new Array(NT).fill(0); const gooHist=[]; let r0=0,r1=0,r2=0,r3=0;
+  const sc=new Array(6), bd=new Array(6);
+  for(let t=0;t<N;t++){
+    let goo=0;
+    const roll=()=>{ const m=new Array(NT).fill(0); let s=0;
+      for(let j=0;j<4;j++){ const x=(Math.random()*NT)|0; m[x]++; s+=w[x]; } return {m,s}; };
+    for(let i=0;i<6;i++){ const r=roll(); bd[i]=r.m; sc[i]=r.s; }
+    const idx=[0,1,2,3,4,5].sort((a,b)=>sc[b]-sc[a]);
+    let slots=3, i=0;
+    while(slots>0 && i<6 && sc[idx[i]] > bars[3-slots]){
+      const m=bd[idx[i]]; for(let k=0;k<NT;k++) yields[k]+=m[k]; goo+=m[GOO]; i++; slots--; }
+    if(slots===3) r0++; else if(slots===2) r1++; else if(slots===1) r2++; else r3++;
+    if(slots>0){
+      for(let i2=0;i2<6;i2++){ const r=roll(); bd[i2]=r.m; sc[i2]=r.s; }
+      const id2=[0,1,2,3,4,5].sort((a,b)=>sc[b]-sc[a]);
+      for(let j=0;j<slots;j++){ const m=bd[id2[j]];
+        for(let k=0;k<NT;k++) yields[k]+=m[k]; goo+=m[GOO]; } }
+    gooHist.push(goo);
+  }
+  gooHist.sort((a,b)=>a-b);
+  return { yields:yields.map(v=>v/N),
+           p10:gooHist[(N*0.1)|0], p90:gooHist[(N*0.9)|0],
+           refresh:[r0/N,r1/N,r2/N,r3/N] };
+}
+
+function el(h){ const d=document.createElement("div"); d.innerHTML=h.trim(); return d.firstChild; }
+function fmt(n,d){ return n.toLocaleString(undefined,{minimumFractionDigits:d,maximumFractionDigits:d}); }
+function tr(n){ return Math.trunc(n).toLocaleString(); }
+
+const sliderBox=document.getElementById("sliders");
+T.forEach((t,i)=>{
+  const [nm,sub]=LABELS[t];
+  sliderBox.appendChild(el(`<div class="sl">
+    <label for="w${i}">${nm}${sub?`<span class="sub">${sub}</span>`:""}</label>
+    <input type="range" id="w${i}" min="0" max="10" step="1" value="${DEFAULTS[t]}">
+    <output id="o${i}">${DEFAULTS[t]}</output></div>`));
 });
 
-/* ============================================================
-   Roster
-   ============================================================ */
-function normName(s){ return String(s).toLowerCase().replace(/[^a-z0-9]/g,''); }
-// Fold characters that this game's rounded font confuses constantly.
-function foldName(s){
-  return normName(s)
-    .replace(/[il]/g,'1').replace(/o/g,'0')
-    .replace(/s/g,'5').replace(/z/g,'2')
-    .replace(/b/g,'8').replace(/g/g,'9');
-}
-function tailDigits(s){ const m = String(s).match(/(\d{3,})\s*$/); return m ? m[1] : ''; }
-
-/* Kept in the browser, not on any server — GitHub Pages has nowhere to put it.
-   Private windows and locked-down browsers refuse, so every call can fail. */
-let storageOK = true;
-function loadRoster(){
-  try { return localStorage.getItem(STORE_KEY); }
-  catch(e){ storageOK = false; return null; }
-}
-function saveRoster(text){
-  try { localStorage.setItem(STORE_KEY, text); storageOK = true; }
-  catch(e){ storageOK = false; }
-  showSaved();
-}
-function showSaved(){
-  $('#savedtag').textContent = storageOK
-    ? 'saved in this browser'
-    : "this browser won't keep it — edit the list in the file instead";
-  $('#savedtag').style.color = storageOK ? '#5E6C7C' : '#C98A2E';
-}
-/* Whatever is in the box wins; an empty box falls back to the built-in list. */
-function rosterText(){
-  const v = $('#roster').value;
-  return v.trim() ? v : DEFAULT_ROSTER.trim();
-}
-function fillIfEmpty(){
-  if($('#roster').value.trim()) return false;
-  $('#roster').value = DEFAULT_ROSTER.trim();
-  readRoster(); saveRoster($('#roster').value);
-  return true;
+const chkBox=document.getElementById("chk");
+for(let s=0;s<4;s++){
+  const opts=T.map((t,i)=>`<option value="${i}"${t==="GuildPotions"&&s===0?" selected":""}>${LABELS[t][0]}</option>`).join("");
+  chkBox.appendChild(el(`<div><div class="note">Slot ${s+1}</div>
+    <select id="s${s}" style="width:100%;margin-top:4px">${opts}</select></div>`));
 }
 
-/* ============================================================
-   Reading the roster out of Google Sheets — no key, no sign-in.
-   Works only while the sheet is viewable by anyone with the link.
-   ============================================================ */
-const CFG_KEY = STORE_KEY + '.sheet';
-
-function loadCfg(){
-  try {
-    const j = localStorage.getItem(CFG_KEY);
-    return j ? Object.assign({}, SHEET, JSON.parse(j)) : Object.assign({}, SHEET);
-  } catch(e){ return Object.assign({}, SHEET); }
-}
-function saveCfg(c){ try { localStorage.setItem(CFG_KEY, JSON.stringify(c)); } catch(e){} }
-function sheetIdFrom(s){
-  const m = String(s).match(/\/spreadsheets\/d\/([A-Za-z0-9_-]+)/);
-  return m ? m[1] : String(s).trim();
-}
-function cfgFromInputs(){
-  return {
-    id: sheetIdFrom($('#sheeturl').value),
-    tab: $('#sheettab').value.trim() || SHEET.tab,
-    column: SHEET.column,
-    firstRow: Math.max(1, parseInt($('#sheetrow').value, 10) || SHEET.firstRow)
-  };
-}
-function showCfg(c){
-  $('#sheeturl').value = c.id;
-  $('#sheettab').value = c.tab;
-  $('#sheetrow').value = c.firstRow;
-}
-
-function parseCSV(text){
-  const rows=[]; let row=[], cell='', q=false;
-  for(let i=0;i<text.length;i++){
-    const c = text[i];
-    if(q){
-      if(c === '"'){ if(text[i+1] === '"'){ cell += '"'; i++; } else q = false; }
-      else cell += c;
-    }
-    else if(c === '"') q = true;
-    else if(c === ','){ row.push(cell); cell=''; }
-    else if(c === '\n'){ row.push(cell); rows.push(row); row=[]; cell=''; }
-    else if(c !== '\r') cell += c;
-  }
-  if(cell !== '' || row.length){ row.push(cell); rows.push(row); }
-  return rows;
-}
-/* Interior blanks stay — they hold the paste-back alignment. */
-function trimTail(list){
-  const a = list.slice();
-  while(a.length && !a[a.length-1].trim()) a.pop();
-  return a;
-}
-
-function jsonp(url, cbName, ms){
-  return new Promise((resolve, reject) => {
-    const el = document.createElement('script');
-    const timer = setTimeout(() => { done(); reject(new Error('timeout')); }, ms);
-    function done(){ clearTimeout(timer); try{ delete window[cbName]; }catch(e){ window[cbName]=undefined; } el.remove(); }
-    window[cbName] = d => { done(); resolve(d); };
-    el.onerror = () => { done(); reject(new Error('blocked')); };
-    el.src = url;
-    document.head.appendChild(el);
-  });
-}
-
-async function fetchRoster(cfg){
-  if(!cfg.id) throw new Error('Paste your sheet link first — the field under “Where the names come from”.');
-  const range = `${cfg.column}${cfg.firstRow}:${cfg.column}${cfg.firstRow + 995}`;
-  const base = `https://docs.google.com/spreadsheets/d/${encodeURIComponent(cfg.id)}/gviz/tq`;
-  const q = `sheet=${encodeURIComponent(cfg.tab)}&range=${range}&headers=0`;
-
-  // Preferred: plain CSV. Google may or may not allow this cross-origin.
-  try {
-    const res = await fetch(`${base}?tqx=out:csv&${q}`);
-    if(res.status === 404) throw new Error('gone');
-    if(res.ok){
-      const text = await res.text();
-      if(!/^\s*</.test(text)) return trimTail(parseCSV(text).map(r => (r[0]||'').trim()));
-    }
-  } catch(e){
-    if(e.message === 'gone') throw new Error("Google doesn't have a sheet with that id — check the link.");
-  }
-
-  // Fallback: JSONP, which sidesteps CORS entirely.
-  const cb = '__wl' + Math.random().toString(36).slice(2);
-  let data;
-  try { data = await jsonp(`${base}?tqx=out:json;responseHandler:${cb}&${q}`, cb, 15000); }
-  catch(e){ throw new Error('Could not reach the sheet. If it is private, set Share to “anyone with the link can view”.'); }
-
-  if(data && data.status === 'error'){
-    const first = (data.errors && data.errors[0]) || {};
-    const msg = String(first.detailed_message || first.message || 'unknown reason').replace(/<[^>]*>/g,'').trim();
-    throw new Error(msg.toLowerCase().includes('access')
-      ? 'The sheet needs sign-in. Set Share to “anyone with the link can view”.'
-      : 'Google refused: ' + msg);
-  }
-  const rows = (data && data.table && data.table.rows) || [];
-  return trimTail(rows.map(r => (r.c && r.c[0] && r.c[0].v != null) ? String(r.c[0].v).trim() : ''));
-}
-
-function setSheetStatus(msg, kind){
-  const el = $('#sheetstatus');
-  el.textContent = msg || '';
-  el.style.color = kind === 'bad' ? '#D98A8D' : kind === 'ok' ? '#6FB98A' : '#5E6C7C';
-}
-
-function readRoster(){
-  const lines = rosterText().replace(/\r/g,'').split('\n');
-  // drop trailing empties only, keep interior blanks so rows stay aligned
-  while(lines.length && lines[lines.length-1].trim()==='') lines.pop();
-  S.roster = lines.map(raw => {
-    const t = raw.trim();
-    return { raw:t, norm:normName(t), folded:foldName(t), tail:tailDigits(t) };
-  });
-  const n = S.roster.filter(r=>r.raw).length;
-  $('#rostercount').textContent = n + (n===1?' name':' names');
-  render();
-}
-
-/* ============================================================
-   Image geometry — find the cards, then the rows, then the lines
-   ============================================================ */
-function lumaAt(d,i){ return 0.299*d[i] + 0.587*d[i+1] + 0.114*d[i+2]; }
-
-/* Card background is a flat light gray. Find how far it reaches across. */
-function findCardBounds(img){
-  const {data:d, width:w, height:h} = img;
-  const col = new Float32Array(w);
-  const step = Math.max(1, Math.round(h/500));
-  let max = 0;
-  for(let x=0;x<w;x++){
-    let hit=0, n=0;
-    for(let y=0;y<h;y+=step){
-      const i=(y*w+x)*4, r=d[i], g=d[i+1], b=d[i+2];
-      const L = 0.299*r+0.587*g+0.114*b;
-      const sat = Math.max(r,g,b)-Math.min(r,g,b);
-      if(L>=210 && L<=246 && sat<14) hit++;
-      n++;
-    }
-    col[x]=hit/n;
-    if(col[x]>max) max=col[x];
-  }
-  if(max < 0.05) return null;
-  const cut = 0.25*max;
-  let x0=-1, x1=-1;
-  for(let x=0;x<w;x++) if(col[x]>cut){ x0=x; break; }
-  for(let x=w-1;x>=0;x--) if(col[x]>cut){ x1=x; break; }
-  if(x0<0 || x1-x0 < w*0.25) return null;
-  return {x0, x1};
-}
-
-/* Median luma per scanline inside the cards separates rows from the white gaps. */
-function findRowBands(img, card){
-  const {data:d, width:w, height:h} = img;
-  const W = card.x1 - card.x0;
-  const bx0 = Math.round(card.x0 + 0.20*W), bx1 = Math.round(card.x0 + 0.80*W);
-  const samples = 61;
-  const buf = new Float64Array(samples);
-  const inside = new Uint8Array(h);
-  const blueish = new Uint8Array(h);
-  for(let y=0;y<h;y++){
-    let rs=0, bs=0;
-    for(let k=0;k<samples;k++){
-      const x = Math.round(bx0 + (bx1-bx0)*k/(samples-1));
-      const i = (y*w+x)*4;
-      buf[k] = lumaAt(d,i); rs += d[i]; bs += d[i+2];
-    }
-    const s = Array.from(buf).sort((a,b)=>a-b);
-    const med = s[(samples-1)>>1];
-    inside[y] = med < 248 ? 1 : 0;
-    blueish[y] = (bs - rs) / samples > 30 ? 1 : 0;
-    if(med < 200 && !blueish[y]) inside[y] = 0;   // dark chrome is not a card
-  }
-  // JPEG noise can knock out a scanline; close gaps of a few pixels
-  for(let y=1;y<h-1;y++){
-    if(inside[y]) continue;
-    let e=y; while(e<h && !inside[e]) e++;
-    if(e<h && e-y<=4) for(let k=y;k<e;k++) inside[k]=1;
-    y=e;
-  }
-  let runs=[]; let st=null;
-  for(let y=0;y<h;y++){
-    if(inside[y] && st===null) st=y;
-    else if(!inside[y] && st!==null){ runs.push([st,y]); st=null; }
-  }
-  if(st!==null) runs.push([st,h]);
-  const minH = Math.max(18, h*0.012), maxH = h*0.12;
-  runs = runs.filter(r => (r[1]-r[0])>=minH && (r[1]-r[0])<=maxH);
-  if(!runs.length) return [];
-
-  // Cards are all the same height. Find that height, then stitch back any
-  // card that got split by a stray bright line inside it.
-  const tally = new Map();
-  runs.forEach(r => { const k = Math.round((r[1]-r[0])/5)*5; tally.set(k,(tally.get(k)||0)+1); });
-  let H = 0, best = -1;
-  for(const [k,c] of tally) if(c>best || (c===best && k>H)){ best=c; H=k; }
-  if(H > 0){
-    const merged = [runs[0].slice()];
-    for(let i=1;i<runs.length;i++){
-      const prev = merged[merged.length-1], cur = runs[i];
-      const gap = cur[0]-prev[1], span = cur[1]-prev[0];
-      if(gap < 0.25*H && span <= 1.15*H) prev[1] = cur[1];
-      else merged.push(cur.slice());
-    }
-    runs = merged;
-  }
-  return runs.map(r=>({y0:r[0], y1:r[1]}));
-}
-
-/* Inside one card: white glyph fill -> horizontal bands of text. */
-function findTextLines(img, x0, x1, y0, y1, thr){
-  const {data:d, width:w} = img;
-  const bw = x1-x0, bh = y1-y0;
-  if(bw<20 || bh<12) return [];
-  const mask = new Uint8Array(bw*bh);
-  const proj = new Int32Array(bh);
-  for(let y=0;y<bh;y++){
-    let c=0;
-    for(let x=0;x<bw;x++){
-      const i = ((y0+y)*w + (x0+x))*4;
-      if(lumaAt(d,i) >= thr){ mask[y*bw+x]=1; c++; }
-    }
-    proj[y]=c;
-  }
-  const runs=[]; let st=null;
-  for(let y=0;y<bh;y++){
-    if(proj[y]>3 && st===null) st=y;
-    else if(proj[y]<=3 && st!==null){ runs.push([st,y]); st=null; }
-  }
-  if(st!==null) runs.push([st,bh]);
-  const minLineH = Math.max(9, bh*0.10);
-  const out=[];
-  for(const [a,b] of runs){
-    if(b-a < minLineH) continue;
-    // tighten horizontally
-    let lx=bw, rx=-1;
-    for(let y=a;y<b;y++) for(let x=0;x<bw;x++) if(mask[y*bw+x]){ if(x<lx) lx=x; if(x>rx) rx=x; }
-    if(rx-lx < 12) continue;
-    let ink=0;
-    for(let y=a;y<b;y++) for(let x=lx;x<=rx;x++) ink+=mask[y*bw+x];
-    if(ink < 40) continue;
-    out.push({mask, bw, top:a, bot:b, left:lx, right:rx, ink});
-  }
-  return out;
-}
-
-/* Render a text band as clean black-on-white, upscaled, with a margin. */
-function lineCanvas(L, scale){
-  const w = L.right - L.left + 1, h = L.bot - L.top;
-  const base = document.createElement('canvas');
-  base.width = w; base.height = h;
-  const bctx = base.getContext('2d');
-  const id = bctx.createImageData(w,h);
-  for(let y=0;y<h;y++) for(let x=0;x<w;x++){
-    const on = L.mask[(L.top+y)*L.bw + (L.left+x)];
-    const v = on ? 0 : 255, o = (y*w+x)*4;
-    id.data[o]=v; id.data[o+1]=v; id.data[o+2]=v; id.data[o+3]=255;
-  }
-  bctx.putImageData(id,0,0);
-  const pad = Math.round(8*scale);
-  const out = document.createElement('canvas');
-  out.width = w*scale + pad*2; out.height = h*scale + pad*2;
-  const octx = out.getContext('2d');
-  octx.fillStyle='#fff'; octx.fillRect(0,0,out.width,out.height);
-  octx.imageSmoothingEnabled = true; octx.imageSmoothingQuality='high';
-  octx.drawImage(base, 0,0,w,h, pad,pad, w*scale, h*scale);
-  return out;
-}
-
-/* ============================================================
-   Text -> value
-   ============================================================ */
-const SEP = /[.,;:'’`´\u00B7\u2019]/;
-function classify(txt){
-  const alnum = (txt.match(/[a-zA-Z0-9]/g)||[]).length;
-  const digits = (txt.match(/\d/g)||[]).length;
-  return { alnum, digits, numeric: alnum>=3 && digits/alnum >= 0.75 };
-}
-/* Two independent reads of the same pixels: a free read, and one restricted to
-   digits. They fail in different ways, so disagreement is the alarm. */
-function parseValue(plain, strict){
-  const dp = plain.replace(/\D/g,'');
-  const ds = (strict||'').replace(/\D/g,'');
-  const digits = ds || dp;
-  const warns = [];
-  if(!digits) return {value:null, warns:['no digits']};
-  if(ds && dp && ds !== dp) warns.push(`reads differ (${dp} vs ${ds}) — confirm against the strip`);
-  else if(/[A-Za-z]/.test(plain)) warns.push('a letter turned up in the number');
-  if(digits.length > 3 && !SEP.test(plain) && !SEP.test(strict||'')) warns.push('no thousands mark — check it');
-  if(digits.length < 3 || digits.length > 8) warns.push('unusual length');
-  const groups = plain.replace(/[^0-9.,;:'’`´\u00B7]/g,'').split(SEP).filter(Boolean);
-  if(groups.length > 1 && groups.slice(1).some(g => g.replace(/\D/g,'').length !== 3))
-    warns.push('odd digit grouping');
-  return {value: parseInt(digits,10), warns};
-}
-function cleanNameText(txt){
-  return txt.replace(/\bMVP\b/gi,'')
-            .replace(/^[^A-Za-z0-9]+/,'')
-            .replace(/[^A-Za-z0-9_\- ]+$/,'')
-            .replace(/\s+/g,' ')
-            .trim();
-}
-
-/* ============================================================
-   Fuzzy matching
-   ============================================================ */
-function lev(a,b){
-  if(a===b) return 0;
-  const m=a.length, n=b.length;
-  if(!m) return n; if(!n) return m;
-  let prev = new Array(n+1), cur = new Array(n+1);
-  for(let j=0;j<=n;j++) prev[j]=j;
-  for(let i=1;i<=m;i++){
-    cur[0]=i;
-    for(let j=1;j<=n;j++){
-      cur[j] = Math.min(prev[j]+1, cur[j-1]+1, prev[j-1] + (a[i-1]===b[j-1]?0:1));
-    }
-    [prev,cur]=[cur,prev];
-  }
-  return prev[n];
-}
-function sim(a,b){ const L=Math.max(a.length,b.length); return L? 1 - lev(a,b)/L : 0; }
-
-function scoreOne(ocr, r){
-  const a = normName(ocr), b = r.norm;
-  if(!a || !b) return 0;
-  if(a === b) return 1;
-  let s = Math.max(sim(a,b), sim(foldName(ocr), r.folded));
-  const t = tailDigits(ocr);
-  if(t && r.tail && t === r.tail) s = Math.min(1, s + 0.28);
-  if(a.length>=4 && b.length>=4 && (a.startsWith(b.slice(0,4)) || b.startsWith(a.slice(0,4)))) s += 0.04;
-  return Math.min(1, s);
-}
-function scorePair(ocr, r){
-  if(!r.raw || !ocr) return 0;
-  // OCR sometimes tacks a stray token onto a name, or splits one in half
-  const parts = ocr.split(/\s+/).filter(Boolean);
-  const variants = new Set([ocr, parts.join('')]);
-  if(parts.length > 1) variants.add(parts[0]);
-  let best = 0;
-  for(const v of variants) best = Math.max(best, scoreOne(v, r));
-  return best;
-}
-
-function assignAll(){
-  const min = opts().minscore;
-  const live = S.entries.filter(e => e.assign !== 'ignore' && !e.manual);
-  live.forEach(e => { e.assign = null; e.score = 0; });
-  const pairs = [];
-  live.forEach((e, ei) => {
-    S.roster.forEach((r, ri) => {
-      if(!r.raw) return;
-      const s = scorePair(e.ocrName, r);
-      if(s >= min) pairs.push({ei, ri, s});
-    });
-  });
-  pairs.sort((a,b)=>b.s-a.s);
-  const takenRow = new Set();
-  // rows locked by manual choices are off the table
-  S.entries.forEach(e => { if(e.manual && typeof e.assign === 'number') takenRow.add(e.assign); });
-  const usedEntry = new Set();
-  for(const p of pairs){
-    if(usedEntry.has(p.ei) || takenRow.has(p.ri)) continue;
-    live[p.ei].assign = p.ri; live[p.ei].score = p.s;
-    usedEntry.add(p.ei); takenRow.add(p.ri);
-  }
-}
-
-/* ============================================================
-   OCR run
-   ============================================================ */
-let worker = null;
-async function getWorker(){
-  if(worker) return worker;
-  setProg(0, 'Loading the reader (one-off ~5 MB download)…');
-  worker = await Tesseract.createWorker('eng', 1, {
-    logger: m => { if(m.status==='loading language traineddata') setProg(m.progress*10, 'Loading language data…'); }
-  });
-  await worker.setParameters({ tessedit_pageseg_mode: '7' });
-  return worker;
-}
-
-function setProg(pct, txt){
-  $('#prog').classList.add('on');
-  $('#barfill').style.width = Math.max(0,Math.min(100,pct)) + '%';
-  $('#progtxt').textContent = txt;
-}
-
-async function runOCR(){
-  if(!S.shots.length) return;
-  const o = opts();
-  $('#run').disabled = true;
-  S.entries = [];
-  const w = await getWorker();
-  let total = 0, done = 0;
-  const plan = [];
-
-  for(const shot of S.shots){
-    const ctx = shot.canvas.getContext('2d', {willReadFrequently:true});
-    const img = ctx.getImageData(0,0,shot.canvas.width,shot.canvas.height);
-    const card = findCardBounds(img);
-    if(!card){ plan.push({shot, error:'Could not find the ranking cards in this shot.'}); continue; }
-    const bands = findRowBands(img, card);
-    const W = card.x1 - card.x0;
-    const nx0 = Math.round(card.x0 + o.namex*W);
-    const rows = [];
-    for(const b of bands){
-      const lines = findTextLines(img, nx0, card.x1, b.y0, b.y1, o.thr);
-      if(!lines.length) continue;
-      rows.push({band:b, lines, card});
-      total += lines.length;
-    }
-    if(!rows.length) plan.push({shot, error:'Found no readable rows. Try lowering the brightness cut-off in Tuning.'});
-    else plan.push({shot, rows, card, img});
-  }
-
-  // --- free read of every text line ---
-  await w.setParameters({ tessedit_char_whitelist: '' });
-  const cand = [];
-  for(const p of plan){
-    if(p.error){ S.entries.push({id:S.nextId++, shotId:p.shot.id, error:p.error}); continue; }
-    for(const row of p.rows){
-      const reads = [];
-      for(const L of row.lines){
-        const cv = lineCanvas(L, o.scale);
-        const res = await w.recognize(cv);
-        reads.push({txt:(res.data.text||'').replace(/\s+/g,' ').trim(), canvas:cv});
-        done++; setProg(10 + 70*done/Math.max(1,total), `Reading ${done} of ${total} lines — ${p.shot.label}`);
-      }
-      let nameRead = null, numRead = null;
-      for(const r of reads){
-        if(classify(r.txt).numeric) numRead = r;
-        else if(!nameRead && (r.txt.match(/[A-Za-z]/g)||[]).length >= 2) nameRead = r;
-      }
-      if(!numRead) continue;                       // no number -> not a leaderboard row
-      cand.push({p, row, reads, nameRead, numRead});
-    }
-  }
-
-  // --- second, digits-only read of just the number lines, as a cross-check ---
-  await w.setParameters({ tessedit_char_whitelist: '0123456789,.' });
-  let n2 = 0;
-  for(const c of cand){
-    const res = await w.recognize(c.numRead.canvas);
-    c.strict = (res.data.text||'').replace(/\s+/g,' ').trim();
-    n2++; setProg(80 + 18*n2/Math.max(1,cand.length), `Double-checking ${n2} of ${cand.length} numbers`);
-  }
-  await w.setParameters({ tessedit_char_whitelist: '' });
-
-  for(const c of cand){
-    const parsed = parseValue(c.numRead.txt, c.strict);
-    if(parsed.value === null) continue;
-    const ocrName = c.nameRead ? cleanNameText(c.nameRead.txt) : '';
-    if(!ocrName) parsed.warns.push('name unreadable — row was probably cut off');
-    S.entries.push({
-      id: S.nextId++, shotId: c.p.shot.id,
-      proof: proofStrip(c.p.shot.canvas, c.row.card, c.row.band),
-      ocrName, value: parsed.value, warns: parsed.warns,
-      assign: null, score: 0, manual: false,
-      debug: o.debug ? c.reads.map(r=>({url:r.canvas.toDataURL(), txt:r.txt})) : null
-    });
-  }
-
-  dedupe();
-  assignAll();
-  setProg(100, `Done — ${S.entries.filter(e=>!e.error).length} rows read.`);
-  setTimeout(()=>$('#prog').classList.remove('on'), 2200);
-  $('#run').disabled = false;
-  render();
-}
-
-/* Same player read twice across overlapping shots: keep the better read. */
-function dedupe(){
-  const seen = new Map();
-  const keep = [];
-  for(const e of S.entries){
-    if(e.error){ keep.push(e); continue; }
-    const k = normName(e.ocrName);
-    if(!k){ keep.push(e); continue; }
-    if(seen.has(k)){
-      const prev = seen.get(k);
-      if(e.value !== prev.value) prev.warns = [...new Set([...prev.warns, 'two shots disagree: ' + prev.value + ' vs ' + e.value])];
-      if((e.warns.length < prev.warns.length)) prev.value = e.value;
-      continue;
-    }
-    seen.set(k, e); keep.push(e);
-  }
-  S.entries = keep;
-}
-
-function proofStrip(canvas, card, band){
-  const sw = card.x1-card.x0, sh = band.y1-band.y0;
-  const outW = 300, outH = Math.round(sh * outW/sw);
-  const c = document.createElement('canvas');
-  c.width = outW; c.height = outH;
-  const ctx = c.getContext('2d');
-  ctx.imageSmoothingQuality = 'high';
-  ctx.drawImage(canvas, card.x0, band.y0, sw, sh, 0, 0, outW, outH);
-  return c.toDataURL('image/jpeg', 0.75);
-}
-
-/* ============================================================
-   Render
-   ============================================================ */
 function render(){
-  renderReview();
-  renderOutput();
-}
+  const ht=Math.max(1,Math.min(999,parseHT(document.getElementById("ht").value)));
+  const bonus=Math.max(0,Math.min(100,+document.getElementById("goobonus").value||0));
+  const mult=1+bonus/100;
+  const [minHT,lo,hi]=bracket(ht);
+  const B=baseAmounts(lo,hi);
+  const base=B.avg.slice(), bmin=B.min.slice(), bmax=B.max.slice();
+  base[GOO]*=mult; bmin[GOO]*=mult; bmax[GOO]*=mult;
+  document.getElementById("stagenote").textContent=`Stage ${stageOf(ht)}`;
 
-function renderReview(){
-  const host = $('#review');
-  if(!S.entries.length){ host.innerHTML = '<div class="empty">Nothing read yet.</div>'; return; }
-  const byShot = new Map();
-  for(const e of S.entries){
-    if(!byShot.has(e.shotId)) byShot.set(e.shotId, []);
-    byShot.get(e.shotId).push(e);
+  const w=T.map((t,i)=>+document.getElementById("w"+i).value);
+  T.forEach((t,i)=>document.getElementById("o"+i).textContent=w[i]);
+  const wEff=w.slice();
+
+  {
+    const nxt=DATA.brackets.find(b=>b[0]>ht);
+    document.getElementById("lvlinfo").innerHTML =
+      `<b>Stage ${stageOf(ht)}</b> (Hammer Thief level ${ht}) rolls missions of level <b>${lo}–${hi}</b>` +
+      (nxt?`. Next bracket at <b>stage ${stageOf(nxt[0])}</b>, Hammer Thief ${nxt[0]}.`:` — the top bracket.`);
   }
-  const parts = [];
-  for(const shot of S.shots){
-    const list = byShot.get(shot.id);
-    if(!list) continue;
-    const good = list.filter(e=>!e.error).length;
-    parts.push(`<div class="shot-group"><div class="shot-name"><span>${esc(shot.label)}</span><span>${good} row${good===1?'':'s'}</span></div>`);
-    for(const e of list){
-      if(e.error){ parts.push(`<div class="err">${esc(e.error)}</div>`); continue; }
-      const matched = typeof e.assign === 'number';
-      const cls = e.assign==='ignore' ? 'entry off'
-                : !matched ? 'entry bad'
-                : e.warns.length ? 'entry flag' : 'entry';
-      const optsHtml = ['<option value="">— not assigned —</option>','<option value="ignore">— ignore this row —</option>']
-        .concat(S.roster.map((r,i)=> r.raw
-          ? `<option value="${i}" ${e.assign===i?'selected':''}>${esc(r.raw)}</option>` : ''))
-        .join('');
-      const meta = [];
-      if(matched && e.score < 1) meta.push(`<span class="meta">match ${(e.score*100|0)}%</span>`);
-      e.warns.forEach(w => meta.push(`<span class="warnpill">${esc(w)}</span>`));
-      if(!matched && e.assign!=='ignore') meta.push('<span class="badpill">no match</span>');
-      parts.push(`<div class="${cls}" data-id="${e.id}">
-        <div class="proof"><img src="${e.proof}" alt="row from screenshot"></div>
-        <div class="cell"><input class="val" type="text" inputmode="numeric" value="${e.value ?? ''}"></div>
-        <div class="cell"><select class="asg">${optsHtml}</select>
-          <div class="readname">read as “${esc(e.ocrName||'—')}”</div></div>
-        <div class="meta">${meta.join(' ')}</div>
-        ${e.debug ? `<div style="grid-column:1/-1;display:flex;gap:8px;flex-wrap:wrap;border-top:1px dashed rgba(11,14,18,.2);padding-top:8px">
-           ${e.debug.map(d=>`<figure style="margin:0"><img src="${d.url}" style="max-height:34px;border:1px solid #ccc"><figcaption class="meta">${esc(d.txt)}</figcaption></figure>`).join('')}
-        </div>` : ''}
-      </div>`);
-    }
-    parts.push('</div>');
+
+  document.getElementById("basetbl").innerHTML =
+    `<tr><th>Resource</th><th class="num">One slot pays</th></tr>` +
+    T.map((t,i)=>`<tr><td>${LABELS[t][0]}${i===GOO&&bonus>0?` <span class="pill yes">+${bonus}%</span>`:""}</td>
+      <td class="num">${tr(bmin[i])===tr(bmax[i]) ? tr(bmin[i])
+        : tr(bmin[i])+"–"+tr(bmax[i])}</td></tr>`).join("");
+
+  const maxW=Math.max(...wEff), total=wEff.reduce((a,b)=>a+b,0);
+  document.getElementById("ratingrecap").innerHTML =
+    T.map((t,i)=>({n:LABELS[t][0], v:wEff[i]})).sort((a,b)=>b.v-a.v)
+     .map(x=>`${x.n} <b>${x.v}</b>`).join(", ");
+  document.getElementById("maxscore").innerHTML = `<b>${maxW*4}</b> (four slots of ${LABELS[T[wEff.indexOf(maxW)]][0]})`;
+  document.getElementById("wnote").innerHTML =
+    `Scores run from 0 to ${maxW*4} points per mission.`;
+
+  {
+    const ord=T.map((t,i)=>i).sort((a,b)=>wEff[b]-wEff[a]);
+    const ex=[[ord[0],ord[0],ord[1],ord[5]],[ord[0],ord[4],ord[5],ord[5]]];
+    document.getElementById("examples").innerHTML = ex.map(c=>{
+      const sum=c.reduce((a,i)=>a+wEff[i],0);
+      const seen=[], cnt={};
+      c.forEach(i=>{ if(!(i in cnt)){ seen.push(i); cnt[i]=0; } cnt[i]++; });
+      const per=i=>Math.trunc(bmax[i]);
+      const totals=seen.map(i=>
+        `<span class="slotpill">${LABELS[T[i]][0]} <b>${(per(i)*cnt[i]).toLocaleString()}</b></span>`).join("");
+      const breakdown=seen.map(i=> cnt[i]>1
+        ? `${LABELS[T[i]][0]} ${Array(cnt[i]).fill(per(i).toLocaleString()).join(" + ")} =
+           <b>${(per(i)*cnt[i]).toLocaleString()}</b>`
+        : `${LABELS[T[i]][0]} <b>${per(i).toLocaleString()}</b>`).join(" &nbsp;·&nbsp; ");
+      const terms=c.map(i=>`${LABELS[T[i]][0]} <b>${wEff[i]}</b>`).join(" &nbsp;+&nbsp; ");
+      return `<div class="ex">
+        <div class="exrow"><span class="exk">You get</span><div class="slots">${totals}</div></div>
+        <div class="exrow"><span class="exk">Slot by slot</span><div class="exl2">${breakdown}</div></div>
+        <div class="exrow"><span class="exk">Score</span>
+          <div class="exl">${terms} =<span class="exs">${sum}</span></div></div></div>`;
+    }).join("");
   }
-  host.innerHTML = parts.join('');
 
-  host.querySelectorAll('.entry').forEach(el => {
-    const id = +el.dataset.id;
-    const e = S.entries.find(x=>x.id===id);
-    el.querySelector('.val').addEventListener('input', ev => {
-      const v = ev.target.value.replace(/\D/g,'');
-      e.value = v ? parseInt(v,10) : null;
-      renderOutput();
-    });
-    el.querySelector('.asg').addEventListener('change', ev => {
-      const v = ev.target.value;
-      e.manual = true;
-      e.assign = v === '' ? null : (v === 'ignore' ? 'ignore' : +v);
-      e.score = v === '' || v === 'ignore' ? 0 : 1;
-      render();
-    });
-  });
-}
-
-function renderOutput(){
-  const col = S.roster.map(() => '');
-  const used = new Set();
-  for(const e of S.entries){
-    if(e.error || typeof e.assign !== 'number' || e.value == null) continue;
-    col[e.assign] = String(e.value);
-    used.add(e.assign);
+  if(total===0){
+    document.getElementById("bars").innerHTML=`<div class="card">Rate at least one resource above 0.</div>`;
+    document.getElementById("flow").innerHTML="";
+    document.getElementById("verdict").innerHTML=""; document.getElementById("daily").innerHTML="";
+    return;
   }
-  $('#outcol').value = col.join('\n');
-  $('#outcsv').value = S.roster
-      .map((r,i)=> r.raw ? `${csvq(r.raw)},${col[i]}` : '')
-      .join('\n');
 
-  const named = S.roster.filter(r=>r.raw).length;
-  const read = S.entries.filter(e=>!e.error && e.value!=null && e.assign!=='ignore').length;
-  const un = S.entries.filter(e=>!e.error && e.assign===null).length;
-  $('#stat').innerHTML = named
-    ? `<b>${used.size}</b> of <b>${named}</b> roster names filled · ${read} rows read · ${un} unassigned · output is <b>${col.length}</b> lines`
-    : '';
-  const miss = S.roster.map((r,i)=>(r.raw && !used.has(i)) ? r.raw : null).filter(Boolean);
-  $('#missing').innerHTML = miss.length
-    ? '<span class="chip" style="border-color:#3D4A59;color:#C7D0D9">no points yet:</span>' + miss.map(m=>`<span class="chip">${esc(m)}</span>`).join('')
-    : '';
+  const V=computeV(wEff);
+  const bars=[V[3]-V[2], V[2]-V[1], V[1]];
+  const ib=bars.map(b=>Math.floor(b)+1);
+
+  document.getElementById("bars").innerHTML = [0,1,2].map(k=>`
+    <div class="bar"><div class="n">${ib[k]}</div>
+    <div class="t"><b>${3-k} mission${k===2?"":"s"} left.</b> Take the best mission on the board if it
+    scores <b>${ib[k]}</b> or more (exact bar ${fmt(bars[k],2)}). Otherwise refresh.</div></div>`).join("");
+
+  document.getElementById("flow").innerHTML = [
+    `Add up the four slot ratings for all 6 missions on the board.`,
+    `Run the highest-scoring mission if it clears <b>${ib[0]}</b>.`,
+    `Run the next-highest if it clears <b>${ib[1]}</b>.`,
+    `Run the next-highest if it clears <b>${ib[2]}</b>.`,
+    `The moment the best mission left is under that step's bar, <b>refresh</b> — then just run the
+     highest-scoring missions on the new board. No more decisions.`
+  ].map((s,i)=>`<div class="step"><div class="k">${i+1}</div><div>${s}</div></div>`)
+   .join(`<div class="arrow"></div>`);
+
+  const sel=[0,1,2,3].map(s=>+document.getElementById("s"+s).value);
+  const msc=sel.reduce((a,i)=>a+wEff[i],0);
+  const amt={}; sel.forEach(i=>amt[i]=(amt[i]||0)+1);
+  document.getElementById("verdict").innerHTML =
+    `<div class="v"><div class="h">Score</div><div class="big">${msc}</div>
+      <div class="note">${Object.entries(amt).map(([i,n])=>`${n}× ${LABELS[T[i]][0]}`).join(", ")}</div>
+      <div class="note">pays up to ${Object.entries(amt).map(([i,n])=>
+        `${tr(bmax[i]*n)} ${LABELS[T[i]][0].toLowerCase()}`).join(", ")}</div></div>` +
+    [0,1,2].map(k=>`<div class="v"><div class="h">${3-k} left · bar ${ib[k]}</div>
+      <div style="margin-top:6px">${msc>=ib[k]
+        ? '<span class="pill yes">Run it</span>' : '<span class="pill no">Refresh instead</span>'}</div></div>`).join("");
+
+  const sim=simulate(wEff,bars,80000);
+  const gooUnits=sim.yields[GOO]*base[GOO];
+  document.getElementById("mGoo").textContent=fmt(gooUnits,0);
+  document.getElementById("mGooSub").textContent=
+    `${fmt(sim.yields[GOO],2)} goo slots a day × ${tr(bmin[GOO])}–${tr(bmax[GOO])} per slot`;
+  document.getElementById("mGooW").textContent=fmt(gooUnits*7,0);
+
+  document.getElementById("daily").innerHTML =
+    `<tr><th>Resource</th><th class="num">Slots / day</th><th class="num">Per day</th><th class="num">Per week</th></tr>`+
+    T.map((t,i)=>`<tr><td>${LABELS[t][0]}</td><td class="num">${fmt(sim.yields[i],2)}</td>
+      <td class="num">${fmt(sim.yields[i]*base[i],0)}</td>
+      <td class="num">${fmt(sim.yields[i]*base[i]*7,0)}</td></tr>`).join("")+
+    `<tr><td><b>Total slots</b></td><td class="num"><b>12.00</b></td><td></td><td></td></tr>`;
+
+  document.getElementById("refreshnote").innerHTML =
+    `You'll refresh straight away ${Math.round(sim.refresh[0]*100)}% of days,
+     after 1 mission ${Math.round(sim.refresh[1]*100)}%,
+     after 2 missions ${Math.round(sim.refresh[2]*100)}%,
+     and keep it unused ${Math.round(sim.refresh[3]*100)}% of the time.`;
 }
 
-function csvq(s){ return /[",\n]/.test(s) ? '"'+s.replace(/"/g,'""')+'"' : s; }
-function esc(s){ return String(s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
-
-/* ============================================================
-   Files
-   ============================================================ */
-function addFiles(files){
-  const list = [...files].filter(f => f.type.startsWith('image/'));
-  let pending = list.length;
-  if(!pending) return;
-  list.forEach(f => {
-    const url = URL.createObjectURL(f);
-    const im = new Image();
-    im.onload = () => {
-      const c = document.createElement('canvas');
-      c.width = im.naturalWidth; c.height = im.naturalHeight;
-      c.getContext('2d').drawImage(im,0,0);
-      S.shots.push({ id:S.nextId++, label:f.name || 'pasted image', canvas:c, url });
-      if(--pending === 0) renderThumbs();
-    };
-    im.onerror = () => { if(--pending === 0) renderThumbs(); };
-    im.src = url;
-  });
-}
-function renderThumbs(){
-  $('#thumbs').innerHTML = S.shots.map(s =>
-    `<div class="thumb"><img src="${s.url}" alt="${esc(s.label)}"><button data-id="${s.id}" title="Remove">×</button></div>`).join('');
-  $('#thumbs').querySelectorAll('button').forEach(b => b.addEventListener('click', () => {
-    const id = +b.dataset.id;
-    const s = S.shots.find(x=>x.id===id);
-    if(s) URL.revokeObjectURL(s.url);
-    S.shots = S.shots.filter(x=>x.id!==id);
-    S.entries = S.entries.filter(e=>e.shotId!==id);
-    renderThumbs(); render();
-  }));
-  $('#run').disabled = S.shots.length === 0;
-}
-
-/* ============================================================
-   Wiring
-   ============================================================ */
-let saveT;
-$('#roster').addEventListener('input', () => {
-  readRoster();
-  clearTimeout(saveT);
-  saveT = setTimeout(() => saveRoster($('#roster').value), 400);
-});
-$('#restore').addEventListener('click', () => {
-  $('#roster').value = DEFAULT_ROSTER.trim();
-  readRoster(); saveRoster($('#roster').value);
-  setSheetStatus('Using the list built into the page.');
-  toast('Built-in list restored');
-});
-['sheeturl','sheettab','sheetrow'].forEach(k =>
-  $('#'+k).addEventListener('change', () => saveCfg(cfgFromInputs())));
-$('#sheeturl').addEventListener('input', syncSheetReady);
-function syncSheetReady(){
-  const ready = !!sheetIdFrom($('#sheeturl').value);
-  $('#loadsheet').disabled = !ready;
-  $('#loadsheet').title = ready ? '' : 'Add your sheet link below first';
-}
-$('#loadsheet').addEventListener('click', async () => {
-  const cfg = cfgFromInputs();
-  saveCfg(cfg); showCfg(cfg);
-  const btn = $('#loadsheet');
-  btn.disabled = true;
-  setSheetStatus('Reading the sheet…');
-  try {
-    const names = await fetchRoster(cfg);
-    if(!names.length) throw new Error(`Nothing in ${cfg.tab}!${cfg.column}${cfg.firstRow} and below — check the tab name and the first row.`);
-    $('#roster').value = names.join('\n');
-    readRoster(); saveRoster($('#roster').value);
-    const n = names.filter(x => x.trim()).length;
-    setSheetStatus(`Loaded ${n} name${n===1?'':'s'} from ${cfg.tab}, starting at row ${cfg.firstRow}.`, 'ok');
-    toast('Roster loaded from the sheet');
-  } catch(err){
-    setSheetStatus(err.message, 'bad');
-  }
-  btn.disabled = false;
-});
-$('#drop').addEventListener('click', ()=> $('#file').click());
-$('#drop').addEventListener('keydown', e => { if(e.key==='Enter'||e.key===' '){ e.preventDefault(); $('#file').click(); }});
-$('#file').addEventListener('change', e => { addFiles(e.target.files); e.target.value=''; });
-['dragenter','dragover'].forEach(t => $('#drop').addEventListener(t, e => { e.preventDefault(); $('#drop').classList.add('hot'); }));
-['dragleave','drop'].forEach(t => $('#drop').addEventListener(t, e => { e.preventDefault(); $('#drop').classList.remove('hot'); }));
-$('#drop').addEventListener('drop', e => addFiles(e.dataTransfer.files));
-window.addEventListener('paste', e => {
-  if(document.activeElement && document.activeElement.tagName === 'TEXTAREA' && document.activeElement.id==='roster') return;
-  if(e.clipboardData && e.clipboardData.files.length) addFiles(e.clipboardData.files);
-});
-$('#clearshots').addEventListener('click', ()=>{
-  S.shots.forEach(s=>URL.revokeObjectURL(s.url));
-  S.shots = []; S.entries = []; renderThumbs(); render();
-});
-$('#run').addEventListener('click', ()=> {
-  if(fillIfEmpty()) toast('Loaded the built-in roster');
-  runOCR().catch(err => {
-    setProg(100, 'Reading failed: ' + err.message);
-    $('#run').disabled = false;
-  });
-});
-
-['thr','namex','scale','minscore'].forEach(k => {
-  const el = $('#'+k), out = $('#'+k+'v');
-  el.addEventListener('input', ()=>{
-    out.textContent = k==='minscore' ? (el.value/100).toFixed(2) : el.value;
-    if(k==='minscore'){ assignAll(); render(); }
-  });
-});
-
-function copyFrom(sel, msg){
-  const ta = $(sel);
-  navigator.clipboard.writeText(ta.value).then(()=>toast(msg)).catch(()=>{
-    ta.removeAttribute('readonly'); ta.select(); document.execCommand('copy');
-    ta.setAttribute('readonly',''); toast(msg);
-  });
-}
-$('#copycol').addEventListener('click', ()=> copyFrom('#outcol','Column copied'));
-$('#copycsv').addEventListener('click', ()=> copyFrom('#outcsv','CSV copied'));
-$('#dlcsv').addEventListener('click', ()=>{
-  const blob = new Blob([$('#outcsv').value], {type:'text/csv'});
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = 'war-day-points.csv';
-  a.click();
-  setTimeout(()=>URL.revokeObjectURL(a.href), 1000);
-});
-let toastT;
-function toast(m){
-  const t = $('#toast'); t.textContent = m; t.classList.add('on');
-  clearTimeout(toastT); toastT = setTimeout(()=>t.classList.remove('on'), 1600);
-}
-
-const startCfg = loadCfg();
-showCfg(startCfg);
-syncSheetReady();
-if(!startCfg.id){
-  $('#sheetpanel').open = true;
-  setSheetStatus('Add your sheet link below to pull names from it — it stays in this browser.');
-}
-const savedRoster = loadRoster();
-$('#roster').value = (savedRoster && savedRoster.trim()) ? savedRoster : DEFAULT_ROSTER.trim();
-readRoster();
-showSaved();
+document.addEventListener("input",e=>{ if(e.target.matches("input,select")) render(); });
+document.addEventListener("change",e=>{ if(e.target.matches("input,select")) render(); });
+render();
 </script>
 </body>
 </html>
